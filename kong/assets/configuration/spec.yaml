@@ -1,0 +1,30 @@
+name: Kong
+files:
+- name: kong.yaml
+  options:
+  - template: init_config
+    options:
+    - template: init_config/openmetrics
+  - template: instances
+    options:
+    - name: kong_status_url
+      description: URL where Kong exposes its status.
+      value:
+        example: http://localhost:8001/status/
+        type: string
+    - template: instances/openmetrics
+      overrides:
+        openmetrics_endpoint.required: false
+        openmetrics_endpoint.value.example: http://localhost:8001/metrics
+        extra_metrics.value.example:
+        - kong_memory_workers_lua_vms_bytes: memory.workers.lua.vms.bytes
+  - template: logs
+    example:
+    - type: file
+      path: /var/log/nginx/access.log
+      source: kong
+      service: <SERVICE_NAME>
+    - type: file
+      path: /var/log/nginx/error.log
+      source: kong
+      service: <SERVICE_NAME>
