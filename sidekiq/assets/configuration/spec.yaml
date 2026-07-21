@@ -1,0 +1,11 @@
+name: Sidekiq
+fleet_configurable: true
+files:
+- name: sidekiq.yaml
+  options:
+  - template: logs
+    example:
+    - type: file
+      path: /var/log/sidekiq.log
+      source: sidekiq
+      service: <SERVICE>
