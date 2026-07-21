@@ -1,0 +1,8 @@
+services:
+  nginx:
+    image: ${NGINX_IMAGE}
+    volumes:
+      - ${NGINX_CONFIG_FOLDER}:/etc/nginx
+    ports:
+      - "8080:80"
+      - "8081:443"
