@@ -1,0 +1,24 @@
+name: Citrix Hypervisor
+fleet_configurable: true
+files:
+- name: citrix_hypervisor.yaml
+  options:
+  - template: init_config
+    options:
+    - template: init_config/http
+    - template: init_config/default
+  - template: instances
+    options:
+    - name: url
+      description: Url of the hypervisor
+      fleet_configurable: true
+      required: true
+      value:
+        type: string
+    - template: instances/http
+    - template: instances/default
+  - template: logs
+    example:
+    - type: file
+      path: /var/log/xensource.log
+      source: citrix_hypervisor
