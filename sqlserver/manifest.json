@@ -1,0 +1,46 @@
+{
+  "categories": [
+    "data store",
+    "log collection"
+  ],
+  "creates_events": false,
+  "display_name": "SQL Server",
+  "guid": "635cb962-ee9f-4788-aa55-a7ffb9661498",
+  "is_public": true,
+  "maintainer": "help@datadoghq.com",
+  "manifest_version": "1.0.0",
+  "metric_prefix": "sqlserver.",
+  "metric_to_check": "sqlserver.stats.connections",
+  "name": "sqlserver",
+  "public_title": "SQL Server Integration",
+  "short_description": "Collect important SQL Server performance and health metrics.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os",
+    "windows"
+  ],
+  "type": "check",
+  "integration_id": "sql-server",
+  "assets": {
+    "configuration": {
+      "spec": "assets/configuration/spec.yaml"
+    },
+    "monitors": {
+      "SQLServer ao not healthy": "assets/recommended_monitors/sqlserver_ao_not_healthy.json",
+      "SQLServer high processes blocked": "assets/recommended_monitors/sqlserver_high_processes_blocked.json",
+      "SQLServer high failed auto param": "assets/recommended_monitors/sqlserver_high_number_failed_auto_param.json",
+      "SQLServer db not online": "assets/recommended_monitors/sqlserver_db_not_online.json",
+      "SQLServer db not in sync": "assets/recommended_monitors/sqlserver_db_not_sync.json"
+    },
+    "dashboards": {
+      "SQLServer-Overview": "assets/dashboards/SQLServer-Overview_dashboard.json",
+      "sqlserver": "assets/dashboards/sqlserver_dashboard.json"
+    },
+    "service_checks": "assets/service_checks.json",
+    "logs": {
+      "source": "sqlserver"
+    },
+    "metrics_metadata": "metadata.csv"
+  }
+}
