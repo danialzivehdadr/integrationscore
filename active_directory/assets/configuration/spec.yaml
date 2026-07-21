@@ -1,0 +1,25 @@
+name: Active Directory
+files:
+- name: active_directory.yaml
+  options:
+  - template: init_config
+    options:
+    - template: init_config/default
+  - template: instances
+    options:
+    - template: instances/pdh
+      overrides:
+          host.required: true
+          additional_metrics.value.example:
+          - [NTDS, none, DS % Writes from LDAP, active_directory.ds.writes_from_ldap, gauge]
+          counter_data_types.value.example:
+          - <METRIC_NAME>,<DATA_TYPE>
+          - active_directory.dra.inbound.bytes.total,int
+          - active_directory.ldap.bind_time,float
+    - template: instances/default
+  - template: logs
+    example:
+    - type: file
+      path: /path/to/active_directory/file.log
+      source: ruby
+      service: <SERVICE_NAME>
