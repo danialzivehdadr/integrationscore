@@ -1,0 +1,55 @@
+- template: instances/all_integrations
+- name: disable_generic_tags
+  description: |
+    Generic tags such as `cluster` will be replaced by <integration_name>_cluster to avoid
+    getting mixed with other integration tags.
+  value:
+    type: boolean
+    display_default: false
+    example: true
+  hidden: true
+  fleet_configurable: true
+- name: enable_legacy_tags_normalization
+  description: |
+    Whether to enable legacy tags normalization. When enabled (default), hyphens in tag
+    values are replaced with underscores. Set to `false` to preserve hyphens, which is
+    consistent with Datadog's tag format.
+  value:
+    type: boolean
+    example: false
+    display_default: true
+  hidden: true
+  fleet_configurable: true
+- name: metric_patterns
+  description: |
+    A mapping of metrics to include or exclude, with each entry being a regular expression.
+
+    Metrics defined in `exclude` will take precedence in case of overlap.
+  value:
+    example:
+      include:
+        - <INCLUDE_REGEX>
+      exclude:
+        - <EXCLUDE_REGEX>
+    type: object
+    properties:
+      - name: include
+        type: array
+        items:
+          type: string
+      - name: exclude
+        type: array
+        items:
+          type: string
+  fleet_configurable: true
+- name: max_returned_metrics
+  description: |
+    Limits the number of unique metric contexts the check can submit per collection cycle.
+    When the limit is reached, additional metrics are silently dropped and a warning is emitted once.
+    Set to 0 for unlimited; ignored on integrations that enforce a non-zero default (the class default is used instead).
+  hidden: true
+  fleet_configurable: true
+  value:
+    type: integer
+    display_default: null
+    example: 2000
