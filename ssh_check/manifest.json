@@ -1,0 +1,24 @@
+{
+  "maintainer": "help@datadoghq.com",
+  "manifest_version": "1.0.0",
+  "name": "ssh_check",
+  "short_description": "Monitor SSH connectivity and SFTP latency.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os",
+    "windows"
+  ],
+  "guid": "4eb195ef-554f-4cc2-80af-8f286c631fa8",
+  "public_title": "Datadog-SSH Check Integration",
+  "categories": [
+    "network"
+  ],
+  "type": "check",
+  "doc_link": "https://docs.datadoghq.com/integrations/ssh_check/",
+  "is_public": true,
+  "has_logo": true,
+  "aliases": [
+    "/integrations/ssh"
+  ]
+}
