@@ -1,0 +1,22 @@
+{
+  "maintainer": "help@datadoghq.com",
+  "manifest_version": "1.0.0",
+  "name": "yarn",
+  "display_name": "Yarn",
+  "creates_events": true,
+  "metric_to_check": "yarn.metrics.total_nodes",
+  "short_description": "Collect cluster-wide health metrics and track application progress.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os",
+    "windows"
+  ],
+  "guid": "3223c2e3-29dd-4cfb-82a2-51b951c648eb",
+  "public_title": "Datadog-Yarn Integration",
+  "categories":["processing"],
+  "type":"check",
+  "doc_link": "https://docs.datadoghq.com/integrations/yarn/",
+  "is_public": true,
+  "has_logo": true
+}

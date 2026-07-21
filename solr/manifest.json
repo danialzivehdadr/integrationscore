@@ -1,0 +1,19 @@
+{
+  "maintainer": "help@datadoghq.com",
+  "manifest_version": "1.0.0",
+  "name": "solr",
+  "short_description": "Monitor request rate, handler errors, cache misses and evictions, and more.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os",
+    "windows"
+  ],
+  "guid": "0235124a-0207-44dd-aede-f578a6d46b26",
+  "public_title": "Datadog-Solr Integration",
+  "categories":["data store", "search"],
+  "type":"check",
+  "doc_link": "https://docs.datadoghq.com/integrations/solr/",
+  "is_public": true,
+  "has_logo": true
+}

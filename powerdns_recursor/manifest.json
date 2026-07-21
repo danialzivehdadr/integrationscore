@@ -1,0 +1,23 @@
+{
+  "maintainer": "help@datadoghq.com",
+  "manifest_version": "1.0.0",
+  "name": "powerdns_recursor",
+  "display_name": "PowerDNS",
+  "creates_events": true,
+  "metric_to_check": "powerdns.recursor.cache_entries",
+  "short_description": "Keep an eye on strange traffic to and from your PowerDNS recursors.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os",
+    "windows"
+  ],
+  "guid": "ae533b67-a2af-45ce-8e23-235acb3a3893",
+  "public_title": "Datadog-Power DNS Recursor Integration",
+  "categories":["web", "network"],
+  "type":"check",
+  "doc_link": "https://docs.datadoghq.com/integrations/powerdns_recursor/",
+  "is_public": true,
+  "has_logo": true,
+  "aliases":["/integrations/powerdns"]
+}

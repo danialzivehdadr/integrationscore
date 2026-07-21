@@ -1,0 +1,23 @@
+{
+  "maintainer": "help@datadoghq.com",
+  "creates_events": "false",
+  "manifest_version": "1.0.0",
+  "name": "tomcat",
+  "display_name": "Tomcat",
+  "creates_events": true,
+  "metric_to_check": "tomcat.threads.max",
+  "short_description": "Track requests per second, bytes served, cache hits, servlet metrics, and more.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os",
+    "windows"
+  ],
+  "guid": "60f37d34-3bb7-43c9-9b52-2659b8898997",
+  "public_title": "Datadog-Tomcat Integration",
+  "categories":["web", "log collection"],
+  "type":"check",
+  "doc_link": "https://docs.datadoghq.com/integrations/tomcat/",
+  "is_public": true,
+  "has_logo": true
+}

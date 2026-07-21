@@ -1,0 +1,23 @@
+{
+  "maintainer": "help@datadoghq.com",
+  "creates_events": "false",
+  "manifest_version": "1.0.0",
+  "name": "kafka",
+  "display_name": "Kafka",
+  "creates_events": true,
+  "metric_to_check": "kafka.net.bytes_out",
+  "short_description": "Collect metrics for producers and consumers, replication, max lag, and more.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os",
+    "windows"
+  ],
+  "guid": "f201c0b7-4b31-4528-9955-ae756a4580b8",
+  "public_title": "Datadog-Kafka Integration",
+  "categories":["processing", "messaging", "log collection"],
+  "type":"check",
+  "doc_link": "https://docs.datadoghq.com/integrations/kafka/",
+  "is_public": true,
+  "has_logo": true
+}

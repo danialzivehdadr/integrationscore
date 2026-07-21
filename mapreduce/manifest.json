@@ -1,0 +1,22 @@
+{
+  "maintainer": "help@datadoghq.com",
+  "manifest_version": "1.0.0",
+  "name": "mapreduce",
+  "display_name": "MapReduce",
+  "creates_events": true,
+  "metric_to_check": "mapreduce.job.elapsed_time.avg",
+  "short_description": "Monitor the status and duration of map and reduce tasks.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os",
+    "windows"
+  ],
+  "guid": "1c143492-84ac-42d2-89d5-a45c718092b0",
+  "public_title": "Datadog-Map Reduce Integration",
+  "categories":["processing"],
+  "type":"check",
+  "doc_link": "https://docs.datadoghq.com/integrations/mapreduce/",
+  "is_public": true,
+  "has_logo": true
+}

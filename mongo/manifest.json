@@ -1,0 +1,29 @@
+{
+  "maintainer": "help@datadoghq.com",
+  "creates_events": "true",
+  "manifest_version": "1.0.0",
+  "name": "mongo",
+  "display_name": "Mongo",
+  "creates_events": true,
+  "metric_to_check": "mongodb.connections.available",
+  "short_description": "Track read/write performance, most-used replicas, collection metrics, and more.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os",
+    "windows"
+  ],
+  "guid": "d51c342e-7a02-4611-a47f-1e8eade5735c",
+  "public_title": "Datadog-MongoDB Integration",
+  "categories": [
+    "data store",
+    "log collection"
+  ],
+  "type": "check",
+  "doc_link": "https://docs.datadoghq.com/integrations/mongo/",
+  "is_public": true,
+  "has_logo": true,
+  "aliases": [
+    "/integrations/mongodb"
+  ]
+}

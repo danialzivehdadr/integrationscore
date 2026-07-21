@@ -1,0 +1,21 @@
+{
+  "maintainer": "help@datadoghq.com",
+  "manifest_version": "1.0.0",
+  "name": "kafka_consumer",
+  "display_name": "Kafka Consumer",
+  "creates_events": true,
+  "metric_to_check": "kafka.consumer_lag",
+  "short_description": "Apache Kafka is publish-subscribe messaging rethought as a distributed commit log.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os"
+  ],
+  "guid": "74e1ce9c-dee9-4ad5-9b6a-05eeee7f5259",
+  "public_title": "Datadog-Kafka Consumer Integration",
+  "categories":["processing", "messaging"],
+  "type":"check",
+  "doc_link": "https://docs.datadoghq.com/integrations/kafka/",
+  "is_public": true,
+  "has_logo": true
+}

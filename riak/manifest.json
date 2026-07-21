@@ -1,0 +1,24 @@
+{
+  "maintainer": "help@datadoghq.com",
+  "manifest_version": "1.0.0",
+  "name": "riak",
+  "display_name": "Riak",
+  "creates_events": true,
+  "metric_to_check": "riak.node_gets",
+  "short_description": "Track node, vnode and ring performance metrics for RiakKV or RiakTS.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os",
+    "windows"
+  ],
+  "guid": "e1ed642c-8a15-420c-954b-6fb894905956",
+  "public_title": "Datadog-Riak Integration",
+  "categories": [
+    "data store"
+  ],
+  "type": "check",
+  "doc_link": "https://docs.datadoghq.com/integrations/riak/",
+  "is_public": true,
+  "has_logo": true
+}
