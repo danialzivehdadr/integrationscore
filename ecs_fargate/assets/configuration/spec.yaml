@@ -1,0 +1,16 @@
+name: Amazon Fargate
+files:
+  - name: ecs_fargate.yaml
+    options:
+      - template: init_config
+        options:
+          - template: init_config/http
+          - template: init_config/default
+      - template: instances
+        options:
+          - template: instances/http
+          - template: instances/default
+            overrides:
+              min_collection_interval.display_default: 20
+              min_collection_interval.value.example: 20
+              min_collection_interval.enabled: 20
