@@ -1,0 +1,34 @@
+name: StatsD
+fleet_configurable: true
+
+files:
+  - name: statsd.yaml
+    options:
+      - template: init_config
+        options:
+          - template: init_config/default
+      - template: instances
+        options:
+          - name: host
+            description: Host to collect StatsD data from.
+            fleet_configurable: true
+            value:
+              example: localhost
+              type: string
+          - name: port
+            description: Port to use to collect StatsD data.
+            fleet_configurable: true
+            value:
+              example: 8126
+              type: integer
+          - name: timeout
+            description: Custom timeout for your check request.
+            value:
+              type: number
+              example: 10
+          - template: instances/default
+      - template: logs
+        example:
+          - type: file
+            path: /var/log/statsd/statsd.log
+            source: statsd
