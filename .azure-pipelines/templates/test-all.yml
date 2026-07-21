@@ -1,0 +1,14 @@
+parameters:
+  checks: []
+  repo: 'core'
+  pip_cache_config: null
+
+jobs:
+- ${{ each check in parameters.checks }}:
+  - template: './test-single-${{ check.os }}.yml'
+    parameters:
+      check: ${{ check.checkName }}
+      display: ${{ check.displayName }}
+      validate: true
+      repo: ${{ parameters.repo }}
+      pip_cache_config: ${{ parameters.pip_cache_config }}
