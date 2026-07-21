@@ -1,0 +1,25 @@
+name: Validate repository
+
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  run:
+    name: Run Validations
+    uses: ./.github/workflows/run-validations.yml
+    with:
+      repo: core
+    secrets: inherit

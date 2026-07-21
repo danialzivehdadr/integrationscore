@@ -1,0 +1,72 @@
+name: Run validations
+
+on:
+  workflow_call:
+    inputs:
+      repo:
+        required: true
+        type: string
+      ddev-version:
+        required: false
+        type: string
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  run:
+    name: Validate
+    # Avoid blocking merge queues by validations that can break with false positives
+    if: github.event_name != 'merge_group'
+    runs-on: ubuntu-22.04
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      PYTHON_VERSION: "3.13"
+      TARGET: ${{ github.event_name == 'pull_request' && 'changed' || '' }}
+
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        fetch-depth: "0"
+
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      with:
+        python-version: "${{ env.PYTHON_VERSION }}"
+
+    - name: Install ddev from local folder
+      if: inputs.repo == 'core'
+      run: |-
+        pip install -e ./datadog_checks_dev[cli]
+        pip install -e ./ddev
+
+    - name: Install ddev from PyPI
+      if: inputs.repo != 'core'
+      run: pip install ddev${{ inputs.ddev-version }}
+
+    - name: Configure ddev
+      run: |
+        ddev config set upgrade_check false
+        ddev config set repos.${{ inputs.repo }} .
+        ddev config set repo ${{ inputs.repo }}
+        ddev config set orgs.ci.dd_url "https://app.datadoghq.com"
+        ddev config set org ci
+
+    - name: Get GitHub token for PR comments
+      if: github.event_name == 'pull_request'
+      uses: DataDog/dd-octo-sts-action@96a25462dbcb10ebf0bfd6e2ccc917d2ab235b9a # v1.0.4
+      id: octo-sts
+      continue-on-error: true
+      with:
+        scope: DataDog/integrations-core
+        policy: self.validate.pull-request
+
+    - name: Run all validations
+      env:
+        DD_GITHUB_USER: "${{ github.actor }}"
+        DD_GITHUB_TOKEN: "${{ steps.octo-sts.outputs.token || secrets.GITHUB_TOKEN }}"
+      run: ddev validate all "$TARGET"
