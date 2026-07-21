@@ -1,0 +1,58 @@
+{
+  "categories": [
+    "web",
+    "log collection"
+  ],
+  "creates_events": false,
+  "display_name": "Nginx",
+  "guid": "88620208-3919-457c-ba51-d844d09ac97f",
+  "is_public": true,
+  "maintainer": "help@datadoghq.com",
+  "manifest_version": "1.0.0",
+  "metric_prefix": "nginx.",
+  "metric_to_check": [
+    "nginx.net.connections",
+    "nginx.connections.active"
+  ],
+  "name": "nginx",
+  "process_signatures": [
+    "nginx: master process"
+  ],
+  "public_title": "Nginx Integration",
+  "short_description": "Monitor connection and request metrics. Get more metrics with NGINX Plus.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os",
+    "windows"
+  ],
+  "type": "check",
+  "integration_id": "nginx",
+  "assets": {
+    "configuration": {
+      "spec": "assets/configuration/spec.yaml"
+    },
+    "monitors": {
+      "[NGINX] Upstream peers fails": "assets/monitors/upstream_peer_fails.json",
+      "[NGINX] 4xx Errors higher than usual": "assets/monitors/4xx.json",
+      "[NGINX] 5xx Errors higher than usual": "assets/monitors/5xx.json"
+    },
+    "dashboards": {
+      "NGINX Plus base overview": "assets/dashboards/plus_overview.json",
+      "NGINX-Metrics": "assets/dashboards/NGINX-Metrics_dashboard.json",
+      "NGINX-Overview": "assets/dashboards/NGINX-Overview_dashboard.json"
+    },
+    "saved_views": {
+      "4xx_errors": "assets/saved_views/4xx_errors.json",
+      "5xx_errors": "assets/saved_views/5xx_errors.json",
+      "status_code_overview": "assets/saved_views/status_code_overview.json",
+      "bot_errors": "assets/saved_views/bot_errors.json",
+      "nginx_processes": "assets/saved_views/nginx_processes.json"
+    },
+    "service_checks": "assets/service_checks.json",
+    "logs": {
+      "source": "nginx"
+    },
+    "metrics_metadata": "metadata.csv"
+  }
+}
