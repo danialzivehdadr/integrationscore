@@ -1,0 +1,623 @@
+{
+    "title": "Presto Overview",
+    "description": "This dashboard provides an overview of the health of your Presto infrastructure so you can investigate failed queries and other performance issues as they arise. Further reading on Presto monitoring:\n\n- [How to monitor Presto with Datadog](https://www.datadoghq.com/blog/monitor-presto-with-datadog/)\n\n- [Datadog’s Presto integration docs](https://docs.datadoghq.com/integrations/presto/)\n\nClone this template dashboard to make changes and add your own graphs and widgets.",
+    "widgets": [
+      {
+        "id": 0,
+        "definition": {
+          "type": "timeseries",
+          "requests": [
+            {
+              "q": "avg:presto.execution.abandoned_queries.one_minute.count{*}, 10*avg:presto.execution.abandoned_queries.one_minute.count{*}",
+              "display_type": "bars",
+              "style": {
+                "palette": "warm",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            }
+          ],
+          "custom_links": [],
+          "title": "Abandoned Queries - One Minute Count",
+          "title_size": "16",
+          "title_align": "left",
+          "show_legend": false,
+          "legend_size": "0"
+        },
+        "layout": {
+          "x": 17,
+          "y": 8,
+          "width": 34,
+          "height": 15
+        }
+      },
+      {
+        "id": 1,
+        "definition": {
+          "type": "image",
+          "url": "https://s3.amazonaws.com/dd-integrations/presto/configuration/tile/logo.png",
+          "sizing": "zoom"
+        },
+        "layout": {
+          "x": 1,
+          "y": 2,
+          "width": 15,
+          "height": 14
+        }
+      },
+      {
+        "id": 2,
+        "definition": {
+          "type": "note",
+          "content": "Query Manager",
+          "background_color": "gray",
+          "font_size": "18",
+          "text_align": "center",
+          "show_tick": true,
+          "tick_pos": "50%",
+          "tick_edge": "bottom"
+        },
+        "layout": {
+          "x": 17,
+          "y": 2,
+          "width": 34,
+          "height": 5
+        }
+      },
+      {
+        "id": 3,
+        "definition": {
+          "type": "check_status",
+          "title": "Can Connect",
+          "title_size": "16",
+          "title_align": "center",
+          "check": "presto.can_connect",
+          "grouping": "cluster",
+          "group_by": [],
+          "tags": [
+            "*"
+          ]
+        },
+        "layout": {
+          "x": 1,
+          "y": 17,
+          "width": 15,
+          "height": 15
+        }
+      },
+      {
+        "id": 4,
+        "definition": {
+          "type": "note",
+          "content": "Task Executor",
+          "background_color": "gray",
+          "font_size": "18",
+          "text_align": "center",
+          "show_tick": true,
+          "tick_pos": "50%",
+          "tick_edge": "bottom"
+        },
+        "layout": {
+          "x": 52,
+          "y": 2,
+          "width": 34,
+          "height": 5
+        }
+      },
+      {
+        "id": 5,
+        "definition": {
+          "type": "note",
+          "content": "Task Manager",
+          "background_color": "gray",
+          "font_size": "18",
+          "text_align": "center",
+          "show_tick": true,
+          "tick_pos": "50%",
+          "tick_edge": "bottom"
+        },
+        "layout": {
+          "x": 87,
+          "y": 2,
+          "width": 34,
+          "height": 5
+        }
+      },
+      {
+        "id": 6,
+        "definition": {
+          "type": "note",
+          "content": "Memory",
+          "background_color": "gray",
+          "font_size": "18",
+          "text_align": "center",
+          "show_tick": true,
+          "tick_pos": "50%",
+          "tick_edge": "right"
+        },
+        "layout": {
+          "x": 1,
+          "y": 33,
+          "width": 15,
+          "height": 38
+        }
+      },
+      {
+        "id": 7,
+        "definition": {
+          "type": "timeseries",
+          "requests": [
+            {
+              "q": "avg:presto.memory.assigned_queries{*}",
+              "display_type": "line",
+              "style": {
+                "palette": "dog_classic",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            }
+          ],
+          "custom_links": [],
+          "title": "Memory Assigned to Queries",
+          "title_size": "16",
+          "title_align": "left",
+          "show_legend": false,
+          "legend_size": "0"
+        },
+        "layout": {
+          "x": 17,
+          "y": 40,
+          "width": 34,
+          "height": 15
+        }
+      },
+      {
+        "id": 8,
+        "definition": {
+          "type": "timeseries",
+          "requests": [
+            {
+              "q": "avg:presto.execution.task_notification_executor.active_count{*}",
+              "display_type": "bars",
+              "style": {
+                "palette": "dog_classic",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            }
+          ],
+          "custom_links": [],
+          "title": "Active Task Count",
+          "title_size": "16",
+          "title_align": "left",
+          "show_legend": false,
+          "legend_size": "0"
+        },
+        "layout": {
+          "x": 52,
+          "y": 8,
+          "width": 34,
+          "height": 15
+        }
+      },
+      {
+        "id": 9,
+        "definition": {
+          "type": "timeseries",
+          "requests": [
+            {
+              "q": "avg:presto.execution.executor.pool_size{*}",
+              "display_type": "line",
+              "style": {
+                "palette": "dog_classic",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            }
+          ],
+          "custom_links": [],
+          "title": "Executor Pool Size",
+          "title_size": "16",
+          "title_align": "left",
+          "show_legend": false,
+          "legend_size": "0"
+        },
+        "layout": {
+          "x": 52,
+          "y": 24,
+          "width": 34,
+          "height": 15
+        }
+      },
+      {
+        "id": 10,
+        "definition": {
+          "type": "timeseries",
+          "requests": [
+            {
+              "q": "avg:presto.execution.insufficient_resources_failures.one_minute.count{*}",
+              "display_type": "bars",
+              "style": {
+                "palette": "warm",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            }
+          ],
+          "custom_links": [],
+          "title": "Insufficient Resource Failures - One Minute Count",
+          "title_size": "16",
+          "title_align": "left",
+          "show_legend": false,
+          "legend_size": "0"
+        },
+        "layout": {
+          "x": 17,
+          "y": 24,
+          "width": 34,
+          "height": 15
+        }
+      },
+      {
+        "id": 11,
+        "definition": {
+          "type": "timeseries",
+          "requests": [
+            {
+              "q": "avg:presto.execution.executor.pool_size{*}",
+              "display_type": "bars",
+              "style": {
+                "palette": "dog_classic",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            }
+          ],
+          "custom_links": [],
+          "title": "Executor Pool Size",
+          "title_size": "16",
+          "title_align": "left",
+          "show_legend": false,
+          "legend_size": "0"
+        },
+        "layout": {
+          "x": 87,
+          "y": 8,
+          "width": 34,
+          "height": 15
+        }
+      },
+      {
+        "id": 12,
+        "definition": {
+          "type": "timeseries",
+          "requests": [
+            {
+              "q": "avg:presto.execution.executor.queued_task_count{*}",
+              "display_type": "bars",
+              "style": {
+                "palette": "dog_classic",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            }
+          ],
+          "custom_links": [],
+          "title": "Queued Task Count",
+          "title_size": "16",
+          "title_align": "left",
+          "show_legend": false,
+          "legend_size": "0"
+        },
+        "layout": {
+          "x": 87,
+          "y": 24,
+          "width": 34,
+          "height": 15
+        }
+      },
+      {
+        "id": 13,
+        "definition": {
+          "type": "timeseries",
+          "requests": [
+            {
+              "q": "avg:presto.memory.free_bytes{*}",
+              "display_type": "area",
+              "style": {
+                "palette": "dog_classic",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            },
+            {
+              "log_query": {
+                "index": "agent-qa",
+                "compute": {
+                  "aggregation": "count"
+                },
+                "search": {
+                  "query": ""
+                },
+                "group_by": []
+              },
+              "display_type": "line",
+              "style": {
+                "palette": "dog_classic",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            }
+          ],
+          "custom_links": [],
+          "title": "Available Memory",
+          "title_size": "16",
+          "title_align": "left",
+          "show_legend": false,
+          "legend_size": "0"
+        },
+        "layout": {
+          "x": 52,
+          "y": 40,
+          "width": 34,
+          "height": 15
+        }
+      },
+      {
+        "id": 14,
+        "definition": {
+          "type": "timeseries",
+          "requests": [
+            {
+              "q": "avg:presto.memory.max_bytes{*}",
+              "display_type": "area",
+              "style": {
+                "palette": "dog_classic",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            }
+          ],
+          "custom_links": [],
+          "title": "Max Memory",
+          "title_size": "16",
+          "title_align": "left",
+          "show_legend": false,
+          "legend_size": "0"
+        },
+        "layout": {
+          "x": 52,
+          "y": 56,
+          "width": 34,
+          "height": 15
+        }
+      },
+      {
+        "id": 15,
+        "definition": {
+          "type": "timeseries",
+          "requests": [
+            {
+              "q": "avg:presto.memory.nodes{*}",
+              "display_type": "line",
+              "style": {
+                "palette": "dog_classic",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            }
+          ],
+          "custom_links": [],
+          "title": "Memory Assigned to Nodes",
+          "title_size": "16",
+          "title_align": "left",
+          "show_legend": false,
+          "legend_size": "0"
+        },
+        "layout": {
+          "x": 87,
+          "y": 40,
+          "width": 34,
+          "height": 15
+        }
+      },
+      {
+        "id": 16,
+        "definition": {
+          "type": "timeseries",
+          "requests": [
+            {
+              "q": "diff(avg:presto.memory.total_distributed_bytes{*})",
+              "display_type": "line",
+              "style": {
+                "palette": "dog_classic",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            }
+          ],
+          "custom_links": [],
+          "title": "Total Distributed Memory",
+          "title_size": "16",
+          "title_align": "left",
+          "show_legend": false,
+          "legend_size": "0"
+        },
+        "layout": {
+          "x": 87,
+          "y": 56,
+          "width": 34,
+          "height": 15
+        }
+      },
+      {
+        "id": 17,
+        "definition": {
+          "type": "note",
+          "content": "Latency",
+          "background_color": "gray",
+          "font_size": "18",
+          "text_align": "center",
+          "show_tick": true,
+          "tick_pos": "50%",
+          "tick_edge": "bottom"
+        },
+        "layout": {
+          "x": 122,
+          "y": 2,
+          "width": 34,
+          "height": 5
+        }
+      },
+      {
+        "id": 18,
+        "definition": {
+          "type": "timeseries",
+          "requests": [
+            {
+              "q": "avg:presto.execution.execution_time.all_time.avg{*}",
+              "display_type": "line",
+              "style": {
+                "palette": "purple",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            }
+          ],
+          "custom_links": [],
+          "title": "Query Execution Time - All Time Avg",
+          "title_size": "16",
+          "title_align": "left",
+          "show_legend": false,
+          "legend_size": "0"
+        },
+        "layout": {
+          "x": 122,
+          "y": 8,
+          "width": 34,
+          "height": 15
+        }
+      },
+      {
+        "id": 19,
+        "definition": {
+          "type": "timeseries",
+          "requests": [
+            {
+              "q": "avg:presto.execution.execution_time.all_time.max{*}",
+              "display_type": "line",
+              "style": {
+                "palette": "purple",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            }
+          ],
+          "custom_links": [],
+          "title": "Query Execution Time - All Time Max",
+          "title_size": "16",
+          "title_align": "left",
+          "show_legend": false,
+          "legend_size": "0"
+        },
+        "layout": {
+          "x": 122,
+          "y": 24,
+          "width": 34,
+          "height": 15
+        }
+      },
+      {
+        "id": 20,
+        "definition": {
+          "type": "timeseries",
+          "requests": [
+            {
+              "q": "avg:presto.execution.execution_time.one_minute.avg{*}",
+              "display_type": "line",
+              "style": {
+                "palette": "purple",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            }
+          ],
+          "custom_links": [],
+          "title": "Query Execution Time - One Minute Avg",
+          "title_size": "16",
+          "title_align": "left",
+          "show_legend": false,
+          "legend_size": "0"
+        },
+        "layout": {
+          "x": 122,
+          "y": 40,
+          "width": 34,
+          "height": 15
+        }
+      },
+      {
+        "id": 21,
+        "definition": {
+          "type": "timeseries",
+          "requests": [
+            {
+              "q": "avg:presto.execution.execution_time.one_minute.max{*}",
+              "display_type": "line",
+              "style": {
+                "palette": "purple",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            }
+          ],
+          "custom_links": [],
+          "title": "Query Execution Time - One Minute Max",
+          "title_size": "16",
+          "title_align": "left",
+          "show_legend": false,
+          "legend_size": "0"
+        },
+        "layout": {
+          "x": 122,
+          "y": 56,
+          "width": 34,
+          "height": 15
+        }
+      },
+      {
+        "id": 22,
+        "definition": {
+          "type": "timeseries",
+          "requests": [
+            {
+              "q": "avg:presto.memory.blocked_nodes{*}",
+              "display_type": "area",
+              "style": {
+                "palette": "dog_classic",
+                "line_type": "solid",
+                "line_width": "normal"
+              }
+            }
+          ],
+          "custom_links": [],
+          "title": "Memory Used by Blocked Nodes",
+          "title_size": "16",
+          "title_align": "left",
+          "show_legend": false,
+          "legend_size": "0"
+        },
+        "layout": {
+          "x": 17,
+          "y": 56,
+          "width": 34,
+          "height": 15
+        }
+      }
+    ],
+    "template_variables": [],
+    "layout_type": "free",
+    "is_read_only": true,
+    "notify_list": [],
+    "id": 30277
+  }
