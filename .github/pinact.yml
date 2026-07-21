@@ -1,0 +1,4 @@
+# Configuration file for pinact used to validate that no
+# GitHub actions are left unpined: .github/workflows/validate-pinned-actions.yml
+# Used to exclude specific actions from the pin check
+version: 3
