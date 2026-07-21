@@ -1,0 +1,10 @@
+hatchling==1.21.1
+hatch-requirements-txt
+setuptools==80.10.1
+wheel==0.46.2
+setuptools-scm
+setuptools-rust>=1.7.0
+maturin
+cffi>=1.12
+cython==3.2.1
+tomli>=2.0.1
