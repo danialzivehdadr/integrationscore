@@ -1,0 +1,46 @@
+{
+  "categories": [
+    "data store",
+    "log collection",
+    "autodiscovery"
+  ],
+  "creates_events": false,
+  "display_name": "Cassandra",
+  "guid": "03ba454d-425c-4f61-9e9c-54682c3ebce5",
+  "is_public": true,
+  "maintainer": "help@datadoghq.com",
+  "manifest_version": "1.0.0",
+  "metric_prefix": "cassandra.",
+  "metric_to_check": "cassandra.load.count",
+  "name": "cassandra",
+  "process_signatures": [
+    "java org.apache.cassandra.service.CassandraDaemon"
+  ],
+  "public_title": "Datadog-Cassandra Integration",
+  "short_description": "Track cluster performance, capacity, overall health, and much more.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os",
+    "windows"
+  ],
+  "type": "check",
+  "integration_id": "cassandra",
+  "assets": {
+    "configuration": {
+      "spec": "assets/configuration/spec.yaml"
+    },
+    "monitors": {},
+    "dashboards": {
+      "cassandra-overview": "assets/dashboards/cassandra_overview.json",
+      "cassandra-read": "assets/dashboards/cassandra_read.json",
+      "cassandra-sstables": "assets/dashboards/cassandra_sstable.json",
+      "cassandra-write": "assets/dashboards/cassandra_write.json"
+    },
+    "service_checks": "assets/service_checks.json",
+    "logs": {
+      "source": "cassandra"
+    },
+    "metrics_metadata": "metadata.csv"
+  }
+}
