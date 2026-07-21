@@ -1,0 +1,10 @@
+ad_identifiers:
+  - httpd
+
+init_config:
+
+instances:
+    ## @param apache_status_url - string - required
+    ## Status url of your Apache server.
+    #
+  - apache_status_url: http://%%host%%/server-status?auto

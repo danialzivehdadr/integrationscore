@@ -1,0 +1,25 @@
+init_config:
+
+instances:
+
+  -
+
+    ## @param timeout - integer - optional - default: 5
+    ## Time to wait on the Fargate metadata API before timeout in second
+    #
+    # timeout: 5
+
+    ## @param tags - list of key:value element - optional
+    ## List of tags to attach to every metric, event and service check emitted by this integration.
+    ##
+    ## Learn more about tagging: https://docs.datadoghq.com/tagging/
+    #
+    # tags:
+    #   - <KEY_1>:<VALUE_1>
+    #   - <KEY_2>:<VALUE_2>
+
+    ## @param label_whitelist - list of string - optional
+    ## Whitelist containers label if you want to collect their corresponding metrics
+    #
+    # label_whitelist:
+    #   - <LABEL>
