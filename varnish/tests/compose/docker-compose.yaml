@@ -1,0 +1,6 @@
+services:
+  varnish:
+    image: varnish:6.5.1
+    container_name: ci_varnish
+    ports:
+    - "80"
