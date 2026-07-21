@@ -1,0 +1,19 @@
+{
+  "maintainer": "help@datadoghq.com",
+  "manifest_version": "1.0.0",
+  "name": "sqlserver",
+  "short_description": "Collect important SQL Server performance and health metrics.",
+  "support": "core",
+  "supported_os": [
+    "windows"
+  ],
+  "guid": "635cb962-ee9f-4788-aa55-a7ffb9661498",
+  "public_title": "Datadog-SQL Server Integration",
+  "categories": [
+    "data store"
+  ],
+  "type": "check",
+  "doc_link": "https://docs.datadoghq.com/integrations/sqlserver/",
+  "is_public": true,
+  "has_logo": true
+}

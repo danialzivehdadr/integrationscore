@@ -1,0 +1,22 @@
+{
+  "maintainer": "help@datadoghq.com",
+  "manifest_version": "1.0.0",
+  "name": "rabbitmq",
+  "short_description": "Track queue size, consumer count, unacknowledged messages, and more.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os",
+    "windows"
+  ],
+  "guid": "a790a556-fbaa-4208-9d39-c42c3d57084b",
+  "public_title": "Datadog-RabbitMQ Integration",
+  "categories": [
+    "processing",
+    "log collection"
+  ],
+  "type": "check",
+  "doc_link": "https://docs.datadoghq.com/integrations/rabbitmq/",
+  "is_public": true,
+  "has_logo": true
+}

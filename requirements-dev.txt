@@ -1,0 +1,9 @@
+invoke
+pip-tools
+packaging
+tox
+docker-compose
+twine
+cookiecutter
+colorama
+requests

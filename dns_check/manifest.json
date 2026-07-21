@@ -1,0 +1,25 @@
+{
+  "maintainer": "help@datadoghq.com",
+  "manifest_version": "1.0.0",
+  "name": "dns_check",
+  "short_description": "Monitor the resolvablity of and lookup times for any DNS record.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os",
+    "windows"
+  ],
+  "guid": "31e4c84c-fc4b-4cd4-97ed-0331bf4e2023",
+  "public_title": "Datadog-DNS Check Integration",
+  "categories": [
+    "network",
+    "web"
+  ],
+  "type": "check",
+  "doc_link": "https://docs.datadoghq.com/integrations/dns_check/",
+  "is_public": true,
+  "has_logo": true,
+  "aliases": [
+    "/integrations/dnscheck"
+  ]
+}

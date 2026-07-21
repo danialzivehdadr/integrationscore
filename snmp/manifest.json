@@ -1,0 +1,23 @@
+{
+  "maintainer": "help@datadoghq.com",
+  "manifest_version": "1.0.0",
+  "name": "snmp",
+  "short_description": "Collect SNMP metrics from your network devices.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os",
+    "windows"
+  ],
+  "guid": "080bb566-d1c8-428c-9d85-71cc2cdf393c",
+  "public_title": "Datadog-SNMP Integration",
+  "categories": [
+    "monitoring",
+    "notification",
+    "network"
+  ],
+  "type": "check",
+  "doc_link": "https://docs.datadoghq.com/integrations/snmp/",
+  "is_public": true,
+  "has_logo": true
+}

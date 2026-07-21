@@ -1,0 +1,22 @@
+{
+  "maintainer": "help@datadoghq.com",
+  "manifest_version": "1.0.0",
+  "name": "kong",
+  "short_description": "Track total requests, response codes, client connections, and more.",
+  "support": "core",
+  "supported_os": [
+    "linux",
+    "mac_os",
+    "windows"
+  ],
+  "guid": "f1098d6f-b393-4374-81c0-47c0a142aeef",
+  "public_title": "Datadog-Kong Integration",
+  "categories": [
+    "web",
+    "api"
+  ],
+  "type": "check",
+  "doc_link": "https://docs.datadoghq.com/integrations/kong/",
+  "is_public": true,
+  "has_logo": true
+}
