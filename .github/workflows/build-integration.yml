@@ -1,0 +1,225 @@
+name: Build Integration Wheel
+
+# Reusable workflow for building a single integration wheel with SLSA provenance attestation
+# This workflow builds the wheel and stores artifacts on GitHub for validation and upload by the TUF repo
+# No direct S3 uploads are performed - all distribution is handled by agent-integrations-tuf
+
+on:
+  workflow_call:
+    inputs:
+      integration-name:
+        description: "Name of the integration to build (e.g., postgres, mysql)"
+        required: true
+        type: string
+      source-repo:
+        description: "Source repository name (integrations-core, integrations-extras, or marketplace)"
+        required: true
+        type: string
+      source-repo-ref:
+        description: "Git reference to checkout (commit SHA, branch, or tag)"
+        required: true
+        type: string
+    outputs:
+      integration-name:
+        description: "Name of the integration that was built"
+        value: ${{ jobs.build-and-attest.outputs.integration-name }}
+      wheel-version:
+        description: "Version of the built wheel"
+        value: ${{ jobs.build-and-attest.outputs.wheel-version }}
+      wheel-digest:
+        description: "SHA256 digest of the wheel"
+        value: ${{ jobs.build-and-attest.outputs.wheel-digest }}
+      wheel-artifact-name:
+        description: "Name of the GitHub artifact containing the wheel"
+        value: ${{ jobs.build-and-attest.outputs.wheel-artifact-name }}
+      attestation-artifact-name:
+        description: "Name of the GitHub artifact containing the attestation"
+        value: ${{ jobs.build-and-attest.outputs.attestation-artifact-name }}
+      target-artifact-name:
+        description: "Name of the GitHub artifact containing the TUF target file"
+        value: ${{ jobs.build-and-attest.outputs.target-artifact-name }}
+
+  # Allow manual testing via workflow_dispatch
+  workflow_dispatch:
+    inputs:
+      integration-name:
+        description: "Name of the integration to build (e.g., postgres, mysql)"
+        required: true
+        type: string
+      source-repo:
+        description: "Source repository name (integrations-core, integrations-extras, or marketplace)"
+        required: true
+        type: choice
+        options:
+          - integrations-core
+          - integrations-extras
+          - marketplace
+      source-repo-ref:
+        description: "Git reference to checkout (commit SHA, branch, or tag)"
+        required: true
+        type: string
+        default: "master"
+
+  # TODO: Remove this PR trigger after testing is complete
+  pull_request:
+    branches:
+      - 01-28-add_release_cli
+      - dk/port-release-workflows
+
+permissions:
+  contents: read # Checkout source code
+  id-token: write # Generate OIDC token for Sigstore signing
+  attestations: write # Create attestations
+
+jobs:
+  build-and-attest:
+    name: Build ${{ inputs.integration-name || 'postgres (PR test)' }}
+    runs-on: ubuntu-latest
+
+    outputs:
+      integration-name: ${{ steps.outputs.outputs.integration-name }}
+      wheel-version: ${{ steps.outputs.outputs.wheel-version }}
+      wheel-digest: ${{ steps.outputs.outputs.wheel-digest }}
+      wheel-artifact-name: ${{ steps.outputs.outputs.wheel-artifact-name }}
+      attestation-artifact-name: ${{ steps.outputs.outputs.attestation-artifact-name }}
+      target-artifact-name: ${{ steps.outputs.outputs.target-artifact-name }}
+
+    steps:
+      - name: Checkout source repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # For PR testing, use defaults; otherwise use inputs
+          repository: DataDog/${{ inputs.source-repo || 'integrations-core' }}
+          ref: ${{ inputs.source-repo-ref || 'master' }}
+          # Persist credentials for provenance generation
+          persist-credentials: true
+          # Sparse checkout - only get the integration directory
+          sparse-checkout: |
+            ${{ inputs.integration-name || 'postgres' }}
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout release package
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: DataDog/agent-integrations-wheels-release
+          path: release-package
+          ref: 01-16-add_build_workflow # TODO: Pin to specific commit SHA in production
+
+      - name: Set up Python
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install release CLI
+        run: |
+          python -m pip install --upgrade pip
+          pip install ./datadog_checks_release_cli
+
+      - name: Build wheel
+        id: build
+        run: |
+          set -eo pipefail  # Exit on error and propagate pipeline failures
+
+          # Use input if provided (workflow_call), otherwise use default for PR testing
+          if [ -n "${{ inputs.integration-name }}" ]; then
+            INTEGRATION="${{ inputs.integration-name }}"
+          else
+            INTEGRATION="postgres"
+          fi
+
+          # Run build command and capture JSON output
+          BUILD_OUTPUT=$(release build "$INTEGRATION")
+          echo "$BUILD_OUTPUT"
+
+          # Parse JSON output and set GitHub Actions outputs
+          echo "integration=$(echo "$BUILD_OUTPUT" | jq -r '.integration')" >> $GITHUB_OUTPUT
+          echo "version=$(echo "$BUILD_OUTPUT" | jq -r '.version')" >> $GITHUB_OUTPUT
+          echo "wheel_path=$(echo "$BUILD_OUTPUT" | jq -r '.wheel_path')" >> $GITHUB_OUTPUT
+          echo "wheel_digest=$(echo "$BUILD_OUTPUT" | jq -r '.wheel_digest')" >> $GITHUB_OUTPUT
+          echo "wheel_size=$(echo "$BUILD_OUTPUT" | jq -r '.wheel_size')" >> $GITHUB_OUTPUT
+          echo "wheel_filename=$(echo "$BUILD_OUTPUT" | jq -r '.wheel_filename')" >> $GITHUB_OUTPUT
+
+      - name: Generate SLSA provenance attestation
+        # Skip when running locally with act (requires GitHub OIDC)
+        if: ${{ !env.ACT }}
+        id: attest
+        uses: actions/attest-build-provenance@00014ed6ed5efc5b1ab7f7f34a39eb55d41aa4f8 # v3.1.0
+        with:
+          subject-path: ${{ steps.build.outputs.wheel_path }}
+
+      - name: Create mock attestation for local testing
+        # Only when running locally with act
+        if: ${{ env.ACT }}
+        id: mock_attest
+        run: |
+          echo '{"mock": "attestation for local testing"}' > mock-attestation.jsonl
+          echo "bundle-path=mock-attestation.jsonl" >> $GITHUB_OUTPUT
+
+      - name: Generate TUF target file
+        run: |
+          # Use real or mock attestation path
+          if [ "${{ env.ACT }}" = "true" ]; then
+            ATTESTATION_PATH="${{ steps.mock_attest.outputs.bundle-path }}"
+          else
+            ATTESTATION_PATH="${{ steps.attest.outputs.bundle-path }}"
+          fi
+
+          # Generate TUF target file with metadata
+          # Repository URL will be determined by the TUF repo during upload
+          release target \
+            --integration "${{ steps.build.outputs.integration }}" \
+            --version "${{ steps.build.outputs.version }}" \
+            --wheel-digest "${{ steps.build.outputs.wheel_digest }}" \
+            --wheel-size "${{ steps.build.outputs.wheel_size }}" \
+            --wheel-filename "${{ steps.build.outputs.wheel_filename }}" \
+            --attestation-digest "$(sha256sum "$ATTESTATION_PATH" | cut -d' ' -f1)" \
+            --output-dir targets
+
+          echo "Generated TUF target file: targets/datadog-${{ steps.build.outputs.integration }}/${{ steps.build.outputs.version }}.yaml"
+
+      - name: Upload wheel artifact
+        # Skip when running locally with act (requires GitHub Actions runtime)
+        if: ${{ !env.ACT }}
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: wheel-${{ steps.build.outputs.integration }}-${{ steps.build.outputs.version }}
+          path: ${{ steps.build.outputs.wheel_path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload attestation artifact
+        # Skip when running locally with act (attestation not generated)
+        if: ${{ !env.ACT }}
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: attestation-${{ steps.build.outputs.integration }}-${{ steps.build.outputs.version }}
+          path: ${{ steps.attest.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload TUF target artifact
+        # Skip when running locally with act (requires GitHub Actions runtime)
+        if: ${{ !env.ACT }}
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: target-${{ steps.build.outputs.integration }}-${{ steps.build.outputs.version }}
+          path: targets/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Set job outputs
+        id: outputs
+        run: |
+          # Integration metadata
+          INTEGRATION="${{ steps.build.outputs.integration }}"
+          VERSION="${{ steps.build.outputs.version }}"
+
+          echo "integration-name=${INTEGRATION}" >> $GITHUB_OUTPUT
+          echo "wheel-version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "wheel-digest=${{ steps.build.outputs.wheel_digest }}" >> $GITHUB_OUTPUT
+
+          # Artifact names for downstream consumption by TUF repo
+          echo "wheel-artifact-name=wheel-${INTEGRATION}-${VERSION}" >> $GITHUB_OUTPUT
+          echo "attestation-artifact-name=attestation-${INTEGRATION}-${VERSION}" >> $GITHUB_OUTPUT
+          echo "target-artifact-name=target-${INTEGRATION}-${VERSION}" >> $GITHUB_OUTPUT
