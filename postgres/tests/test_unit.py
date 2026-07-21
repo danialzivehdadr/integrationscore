@@ -1,0 +1,538 @@
+# (C) Datadog, Inc. 2018-present
+# All rights reserved
+# Licensed under Simplified BSD License (see LICENSE)
+import copy
+import gc
+import weakref
+
+import mock
+import psycopg
+import pytest
+from pytest import fail
+from semver import VersionInfo
+
+from datadog_checks.postgres import PostgreSql, util
+from datadog_checks.postgres.schemas import PostgresSchemaCollector
+
+pytestmark = pytest.mark.unit
+
+
+def test_get_instance_metrics_lt_92(integration_check, pg_instance):
+    """
+    check output when 9.2+
+    """
+    pg_instance['collect_database_size_metrics'] = False
+    check = integration_check(pg_instance)
+
+    res = check.metrics_cache.get_instance_metrics(VersionInfo(9, 1, 0))
+    assert res['metrics'] == dict(util.COMMON_METRICS, **util.DBM_MIGRATED_METRICS)
+
+
+def test_get_instance_metrics_92(integration_check, pg_instance):
+    """
+    check output when <9.2
+    """
+    pg_instance['collect_database_size_metrics'] = False
+    check = integration_check(pg_instance)
+
+    res = check.metrics_cache.get_instance_metrics(VersionInfo(9, 2, 0))
+    c_metrics = dict(util.COMMON_METRICS, **util.DBM_MIGRATED_METRICS)
+    assert res['metrics'] == dict(c_metrics, **util.NEWER_92_METRICS)
+
+
+def test_get_instance_metrics_state(integration_check, pg_instance):
+    """
+    Ensure data is consistent when the function is called more than once
+    """
+    pg_instance['collect_database_size_metrics'] = False
+    check = integration_check(pg_instance)
+
+    res = check.metrics_cache.get_instance_metrics(VersionInfo(9, 2, 0))
+    c_metrics = dict(util.COMMON_METRICS, **util.DBM_MIGRATED_METRICS)
+    assert res['metrics'] == dict(c_metrics, **util.NEWER_92_METRICS)
+
+    res = check.metrics_cache.get_instance_metrics('foo')  # metrics were cached so this shouldn't be called
+    assert res['metrics'] == dict(c_metrics, **util.NEWER_92_METRICS)
+
+
+def test_get_instance_metrics_database_size_metrics(integration_check, pg_instance):
+    """
+    Test the function behaves correctly when `database_size_metrics` is passed
+    """
+    pg_instance['collect_default_database'] = True
+    pg_instance['collect_database_size_metrics'] = False
+    check = integration_check(pg_instance)
+
+    expected = util.COMMON_METRICS
+    expected.update(util.DBM_MIGRATED_METRICS)
+    expected.update(util.NEWER_92_METRICS)
+    expected.update(util.DATABASE_SIZE_METRICS)
+    res = check.metrics_cache.get_instance_metrics(VersionInfo(9, 2, 0))
+    assert res['metrics'] == expected
+
+
+@pytest.mark.parametrize("collect_default_database", [True, False])
+def test_get_instance_with_default(pg_instance, collect_default_database, integration_check):
+    """
+    Test the contents of the query string with different `collect_default_database` values
+    """
+    pg_instance['collect_default_database'] = collect_default_database
+    if not collect_default_database:
+        pg_instance['ignore_databases'] = ['postgres']
+    check = integration_check(pg_instance)
+    check.version = VersionInfo(9, 2, 0)
+    res = check.metrics_cache.get_instance_metrics(check.version)
+    dbfilter = " AND psd.datname not ilike 'postgres'"
+    if collect_default_database:
+        assert dbfilter not in res['query']
+    else:
+        assert dbfilter in res['query']
+
+
+@pytest.mark.parametrize(
+    'test_case, params',
+    [
+        ('9.6.2', {'version.major': '9', 'version.minor': '6', 'version.patch': '2'}),
+        ('10.0', {'version.major': '10', 'version.minor': '0', 'version.patch': '0'}),
+        (
+            '11nightly3',
+            {'version.major': '11', 'version.minor': '0', 'version.patch': '0', 'version.release': 'nightly.3'},
+        ),
+    ],
+)
+def test_version_metadata(check, test_case, params):
+    check.check_id = 'test:123'
+    with mock.patch('datadog_checks.base.stubs.datadog_agent.set_check_metadata') as m:
+        check.set_metadata('version', test_case)
+        for name, value in params.items():
+            m.assert_any_call('test:123', name, value)
+        m.assert_any_call('test:123', 'version.scheme', 'semver')
+        m.assert_any_call('test:123', 'version.raw', test_case)
+
+
+@pytest.mark.parametrize(
+    'test_case',
+    [
+        ('any_hostname'),
+    ],
+)
+def test_resolved_hostname_metadata(check, test_case):
+    check.check_id = 'test:123'
+    with mock.patch('datadog_checks.base.stubs.datadog_agent.set_check_metadata') as m:
+        check.set_metadata('resolved_hostname', test_case)
+        m.assert_any_call('test:123', 'resolved_hostname', test_case)
+
+
+def test_query_timeout_connection_string(aggregator, integration_check, pg_instance):
+    pg_instance['password'] = ''
+    pg_instance['query_timeout'] = 1000
+
+    check = integration_check(pg_instance)
+    try:
+        check.db_pool.get_connection(pg_instance['dbname'])
+    except psycopg.ProgrammingError as e:
+        fail(str(e))
+    except psycopg.OperationalError:
+        # could not connect to server because there is no server running
+        pass
+
+
+@pytest.mark.parametrize(
+    'disable_generic_tags, expected_tags',
+    [
+        (
+            True,
+            {
+                'db:datadog_test',
+                'port:5432',
+                'foo:bar',
+                'dd.internal.resource:database_instance:stubbed.hostname',
+                'database_hostname:stubbed.hostname',
+                'database_instance:stubbed.hostname',
+            },
+        ),
+        (
+            False,
+            {
+                'db:datadog_test',
+                'foo:bar',
+                'port:5432',
+                'server:localhost',
+                'dd.internal.resource:database_instance:stubbed.hostname',
+                'database_hostname:stubbed.hostname',
+                'database_instance:stubbed.hostname',
+            },
+        ),
+    ],
+)
+def test_server_tag_(disable_generic_tags, expected_tags, pg_instance, integration_check):
+    instance = copy.deepcopy(pg_instance)
+    instance['disable_generic_tags'] = disable_generic_tags
+    check = integration_check(instance)
+    assert set(check.tags) == expected_tags
+
+
+@pytest.mark.parametrize(
+    'disable_generic_tags, expected_hostname', [(True, 'resolved.hostname'), (False, 'resolved.hostname')]
+)
+def test_resolved_hostname(disable_generic_tags, expected_hostname, pg_instance, integration_check):
+    instance = copy.deepcopy(pg_instance)
+    instance['disable_generic_tags'] = disable_generic_tags
+
+    with mock.patch(
+        'datadog_checks.postgres.PostgreSql.resolve_db_host', return_value='resolved.hostname'
+    ) as resolve_db_host_mock:
+        check = integration_check(instance)
+        assert check.resolved_hostname == expected_hostname
+        assert resolve_db_host_mock.called is True
+
+
+@pytest.mark.parametrize(
+    'template, expected, tags',
+    [
+        ('$resolved_hostname', 'stubbed.hostname', ['env:prod']),
+        ('$env-$resolved_hostname:$port', 'prod-stubbed.hostname:5432', ['env:prod', 'port:1']),
+        ('$env-$resolved_hostname', 'prod-stubbed.hostname', ['env:prod']),
+        ('$env-$resolved_hostname', '$env-stubbed.hostname', []),
+        ('$env-$resolved_hostname', 'prod,staging-stubbed.hostname', ['env:prod', 'env:staging']),
+    ],
+)
+def test_database_identifier(pg_instance, template, expected, tags, integration_check):
+    """
+    Test functionality of calculating database_identifier
+    """
+
+    pg_instance['database_identifier'] = {'template': template}
+    pg_instance['tags'] = tags
+    check = integration_check(pg_instance)
+    assert check.database_identifier == expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "query,expected_trimmed_query",
+    [
+        ("SELECT * FROM pg_settings WHERE name = $1", "SELECT * FROM pg_settings WHERE name = $1"),
+        ("SELECT * FROM pg_settings; DELETE FROM pg_settings;", "SELECT * FROM pg_settings; DELETE FROM pg_settings;"),
+        ("SET search_path TO 'my_schema', public; SELECT * FROM pg_settings", "SELECT * FROM pg_settings"),
+        ("SET TIME ZONE 'Europe/Rome'; SELECT * FROM pg_settings", "SELECT * FROM pg_settings"),
+        (
+            "SET LOCAL request_id = 1234; SET LOCAL hostname TO 'Bob''s Laptop'; SELECT * FROM pg_settings",
+            "SELECT * FROM pg_settings",
+        ),
+        ("SET LONG;" * 1024 + "SELECT *;", "SELECT *;"),
+        ("SET " + "'quotable'" * 1024 + "; SELECT *;", "SELECT *;"),
+        ("SET 'l" + "o" * 1024 + "ng'; SELECT *;", "SELECT *;"),
+        (" /** pl/pgsql **/ SET 'comment'; SELECT *;", "SELECT *;"),
+        ("this isn't SQL", "this isn't SQL"),
+        (
+            "SET SESSION min_wal_size = 14400; "
+            + "SET LOCAL wal_buffers TO 2048; "
+            + "/* testing id 1234 */ set send_abort_for_kill TO 'stderr'; "
+            + "set id = case when (false) and ((((cast(null as box) ~= cast(null as box)) "
+            + "or (cast(null as point) <@ cast(null as line))) or (public.my table",
+            "set id = case when (false) and ((((cast(null as box) ~= cast(null as box)) "
+            + "or (cast(null as point) <@ cast(null as line))) or (public.my table",
+        ),
+        ("", ""),
+    ],
+)
+def test_trim_set_stmts(query, expected_trimmed_query):
+    trimmed_query = util.trim_leading_set_stmts(query)
+    assert trimmed_query == expected_trimmed_query
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'intervals, expected',
+    [
+        pytest.param((600, 600, 600, 3600), 600, id='all-multiples-of-min'),
+        pytest.param((600, 600, 600, 4500), 300, id='min-not-equal-to-gcd'),
+        pytest.param((600,), 600, id='single-interval'),
+        pytest.param((600, 0, 3600), 600, id='zero-does-not-constrain-gcd'),
+        pytest.param((600.0, 3600.0), 600, id='float-inputs-cast-to-int'),
+        pytest.param((900, 1500), 300, id='gcd-smaller-than-any-input'),
+    ],
+)
+def test_collection_interval_gcd(intervals, expected):
+    assert util.collection_interval_gcd(*intervals) == expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'exclude_hostname, expected_hostname',
+    [
+        (False, 'resolved.hostname'),
+        (True, None),
+    ],
+)
+def test_debug_stats_kwargs_respects_exclude_hostname(
+    integration_check, pg_instance, exclude_hostname, expected_hostname
+):
+    pg_instance['exclude_hostname'] = exclude_hostname
+    with mock.patch('datadog_checks.postgres.PostgreSql.resolve_db_host', return_value='resolved.hostname'):
+        check = integration_check(pg_instance)
+    assert check.debug_stats_kwargs()['hostname'] == expected_hostname
+
+
+@pytest.mark.unit
+def test_get_databases_autodiscovery_uses_parameterized_queries(pg_instance, integration_check):
+    """Database names from autodiscovery must be bound as query parameters, not formatted into SQL."""
+    pg_instance['collect_schemas'] = {'enabled': True}
+    check = integration_check(pg_instance)
+    collector = PostgresSchemaCollector(check)
+
+    db_names = ['postgres', "x') OR 1=1--", 'dogs']
+
+    execute_calls = []
+    mock_cursor = mock.MagicMock()
+    mock_cursor.execute.side_effect = lambda q, p=None: execute_calls.append((q, p))
+    mock_cursor.fetchall.return_value = []
+
+    mock_conn = mock.MagicMock()
+    mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+    mock_main_db = mock.MagicMock()
+    mock_main_db.__enter__.return_value = mock_conn
+
+    check.autodiscovery = mock.MagicMock()
+    check.autodiscovery.get_items.return_value = db_names
+
+    with mock.patch.object(check, '_get_main_db', return_value=mock_main_db):
+        collector._get_databases()
+
+    assert len(execute_calls) == 1
+    query, params = execute_calls[0]
+
+    for name in db_names:
+        assert name not in query, f"Database name {name!r} must not appear in the SQL string"
+
+    assert all(name in params for name in db_names), "All database names must be present in query parameters"
+    assert query.count('%s') == len(params), "Number of placeholders must equal number of parameters"
+
+
+@pytest.mark.unit
+def test_run_explain_uses_parameterized_statement(pg_instance, integration_check):
+    """Statements passed to the explain function must be bound as parameters, not interpolated into SQL."""
+    pg_instance['dbm'] = True
+    pg_instance['query_samples'] = {'enabled': True}
+    check = integration_check(pg_instance)
+    check._resolved_hostname = 'test.host'
+
+    statement = "SELECT 1$stmt$) UNION ALL SELECT current_user--"
+
+    execute_calls = []
+    mock_cursor = mock.MagicMock()
+    mock_cursor.execute.side_effect = lambda q, p=None, **kw: execute_calls.append((q, p))
+    mock_cursor.fetchone.return_value = ([{"Plan": {}}],)
+
+    mock_conn = mock.MagicMock()
+    mock_conn.info.encoding.lower.return_value = 'utf-8'
+    mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+    conn_cm = mock.MagicMock()
+    conn_cm.__enter__.return_value = mock_conn
+
+    with mock.patch.object(check.db_pool, 'get_connection', return_value=conn_cm):
+        with mock.patch.object(check, 'histogram'):
+            check.statement_samples._run_explain('testdb', statement, statement)
+
+    assert execute_calls, "Expected cursor.execute to be called"
+    query, params = execute_calls[0]
+
+    assert '$stmt$' not in query, "Dollar-quote tag must not appear in the SQL template"
+    assert statement not in query, "Statement must not be interpolated into the SQL template"
+    assert params == (statement,), "Statement must be passed as a bound parameter"
+
+
+def test_new_connection_closes_conn_when_configure_raises(integration_check, pg_instance):
+    """If _configure_connection raises after connect() succeeds, the connection must be closed."""
+    check = integration_check(pg_instance)
+    conn = mock.MagicMock()
+    with mock.patch('datadog_checks.postgres.postgres.TokenAwareConnection.connect', return_value=conn):
+        with mock.patch.object(check.db_pool, '_configure_connection', side_effect=psycopg.Error('SET failed')):
+            with pytest.raises(psycopg.Error):
+                check._new_connection(check._config.dbname)
+    conn.close.assert_called_once()
+
+
+def test_close_db_closes_open_connection(integration_check, pg_instance):
+    check = integration_check(pg_instance)
+    conn = mock.MagicMock()
+    conn.closed = False
+    check._db = conn
+
+    check._close_db()
+
+    conn.close.assert_called_once()
+    assert check._db is None
+
+
+def test_close_db_handles_already_closed_connection(integration_check, pg_instance):
+    check = integration_check(pg_instance)
+    conn = mock.MagicMock()
+    conn.close.side_effect = Exception("already closed")
+    check._db = conn
+
+    check._close_db()
+
+    assert check._db is None
+
+
+def test_close_db_noop_when_no_connection(integration_check, pg_instance):
+    check = integration_check(pg_instance)
+    check._db = None
+
+    check._close_db()
+
+    assert check._db is None
+
+
+def test_cancel_closes_main_db_connection(integration_check, pg_instance):
+    check = integration_check(pg_instance)
+    conn = mock.MagicMock()
+    check._db = conn
+
+    check.cancel()
+
+    conn.close.assert_called_once()
+    assert check._db is None
+
+
+def test_check_gc_after_cancel(pg_instance):
+    """Verify cancel() breaks all reference cycles so refcount alone reclaims the check.
+
+    If this test fails, the assertion message lists the types still holding a
+    reference to the check. To fix it:
+
+    1. Identify the referrer type in the failure message (e.g. ``QueryManager``).
+    2. Find which attribute on that object points back to the check (usually
+       ``self.check`` or ``self._check``).
+    3. Null that attribute in ``cancel()`` or add it to the relevant
+       ``_shutdown()`` method.
+    4. If the referrer is a closure or ``functools.partial``, find the
+       registration site and null or clear the container that holds it.
+    """
+    pg_instance['dbm'] = True
+    pg_instance['query_samples'] = {'enabled': True, 'run_sync': True, 'collection_interval': 1}
+    pg_instance['query_metrics'] = {'enabled': True, 'run_sync': True, 'collection_interval': 10}
+    pg_instance['query_activity'] = {'enabled': True, 'collection_interval': 1}
+    pg_instance['data_observability'] = {'enabled': True, 'run_sync': True, 'collection_interval': 1}
+    pg_instance['collect_column_statistics'] = {'enabled': True, 'collection_interval': 60}
+
+    check = PostgreSql('postgres', {}, [pg_instance])
+    ref = weakref.ref(check)
+
+    check.cancel()
+
+    gc.collect()
+    gc.disable()
+    try:
+        del check
+        obj = ref()
+        if obj is not None:
+            import inspect
+
+            referrers = [
+                f"bound method {r.__qualname__}" if inspect.ismethod(r) else type(r).__name__
+                for r in gc.get_referrers(obj)
+            ]
+            del obj
+            fail(f"Check still alive after cancel() + del -- pinned by: {referrers}")
+    finally:
+        gc.enable()
+
+
+def test_cancel_during_running_check_defers_finalize(pg_instance):
+    """Verify that cancel() during an in-flight check() does not close connections.
+
+    Destructive cleanup (_finalize) must be deferred until run() completes so
+    that check() never accesses a closed psycopg connection, which would cause
+    a SIGSEGV in libpq.
+    """
+    import threading
+
+    check = PostgreSql('postgres', {}, [pg_instance])
+    conn = mock.MagicMock()
+    check._db = conn
+
+    check_started = threading.Event()
+    cancel_done = threading.Event()
+
+    def slow_run(self_arg):
+        check_started.set()
+        cancel_done.wait(timeout=5)
+        return ''
+
+    run_result = [None]
+
+    def run_check():
+        with mock.patch.object(type(check).__mro__[1], 'run', slow_run):
+            run_result[0] = check.run()
+
+    run_thread = threading.Thread(target=run_check)
+    run_thread.start()
+
+    check_started.wait(timeout=5)
+
+    check.cancel()
+    # cancel() should have signaled but NOT finalized since run() is in-flight
+    assert not conn.close.called, "_close_db() ran while check() was still executing"
+    assert check._cancelled is True
+
+    cancel_done.set()
+    run_thread.join(timeout=5)
+
+    # After run() completes, _finalize() should have been called
+    conn.close.assert_called_once()
+    assert check._db is None
+    assert check._query_manager is None
+    assert check.health is None
+
+
+def test_cancel_on_idle_check_finalizes_immediately(pg_instance):
+    """Verify that cancel() on an idle check runs _finalize() inline."""
+    check = PostgreSql('postgres', {}, [pg_instance])
+    conn = mock.MagicMock()
+    check._db = conn
+
+    assert not check._is_running
+
+    check.cancel()
+
+    conn.close.assert_called_once()
+    assert check._db is None
+    assert check._query_manager is None
+    assert check.health is None
+
+
+def test_run_after_cancel_returns_immediately(pg_instance):
+    """Verify that run() returns '' without executing check() if already cancelled."""
+    check = PostgreSql('postgres', {}, [pg_instance])
+    check.cancel()
+
+    with mock.patch.object(check, 'check', side_effect=AssertionError("check() should not be called")):
+        result = check.run()
+
+    assert result == ''
+
+
+def test_collect_column_statistics_updates_timestamp_on_failure(pg_instance):
+    pg_instance['dbm'] = True
+    pg_instance['collect_column_statistics'] = {'enabled': True, 'collection_interval': 60}
+
+    check = PostgreSql('postgres', {}, [pg_instance])
+    metadata = check.metadata_samples
+    metadata._tags_no_db = []
+
+    with mock.patch.object(
+        metadata._column_statistics_collector,
+        'collect_column_statistics',
+        side_effect=RuntimeError('boom'),
+    ):
+        before = metadata._last_column_statistics_query_time
+        with pytest.raises(RuntimeError):
+            metadata._collect_column_statistics()
+        after = metadata._last_column_statistics_query_time
+
+    assert after > before

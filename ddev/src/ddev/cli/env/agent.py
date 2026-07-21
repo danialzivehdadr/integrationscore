@@ -1,0 +1,143 @@
+# (C) Datadog, Inc. 2023-present
+# All rights reserved
+# Licensed under a 3-clause BSD style license (see LICENSE)
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import click
+
+if TYPE_CHECKING:
+    from ddev.cli.application import Application
+    from ddev.e2e.agent.interface import AgentInterface
+
+
+def _invoke_check_with_retry(
+    agent: AgentInterface,
+    args: list[str],
+    *,
+    env_vars: dict[str, str] | None = None,
+    retries: int = 3,
+    backoff: float = 0.5,
+) -> None:
+    """Invoke ``agent check`` with bounded retry to absorb transient autodiscovery-reload races."""
+    import subprocess
+    import time
+
+    for attempt in range(retries + 1):
+        try:
+            agent.invoke(args, env_vars=env_vars)
+            return
+        except subprocess.CalledProcessError:
+            if attempt >= retries:
+                raise
+            click.echo(
+                f'agent check failed (attempt {attempt + 1}/{retries + 1}), retrying in {backoff:.1f}s...',
+                err=True,
+            )
+            time.sleep(backoff)
+
+
+def _validate_env_vars(ctx: click.Context, param: click.Parameter, value: tuple[str, ...]) -> dict[str, str] | None:
+    env_vars: dict[str, str] = {}
+    for entry in value:
+        key, sep, env_value = entry.partition('=')
+        if not sep or not key:
+            raise click.BadParameter(f'`{entry}` is not in KEY=VALUE format', ctx=ctx, param=param)
+        env_vars[key] = env_value
+
+    return env_vars or None
+
+
+@click.command(
+    short_help='Invoke the Agent', context_settings={'help_option_names': [], 'ignore_unknown_options': True}
+)
+@click.argument('intg_name', metavar='INTEGRATION')
+@click.argument('environment')
+@click.argument('args', required=True, nargs=-1)
+@click.option('--config-file', hidden=True)
+@click.option(
+    '--env',
+    'env_vars',
+    multiple=True,
+    metavar='KEY=VALUE',
+    callback=_validate_env_vars,
+    help='Set an environment variable for this invocation only (may be repeated)',
+)
+@click.pass_obj
+def agent(
+    app: Application,
+    *,
+    intg_name: str,
+    environment: str,
+    args: tuple[str, ...],
+    config_file: str | None,
+    env_vars: dict[str, str] | None,
+):
+    """
+    Invoke the Agent.
+    """
+    import subprocess
+
+    from ddev.e2e.agent import get_agent_interface
+    from ddev.e2e.config import EnvDataStorage
+    from ddev.e2e.constants import DEFAULT_AGENT_TYPE, E2EMetadata
+    from ddev.utils.fs import Path
+
+    integration = app.repo.integrations.get(intg_name)
+    env_data = EnvDataStorage(app.data_dir).get(integration.name, environment)
+
+    if not env_data.exists():
+        app.abort(f'Environment `{environment}` for integration `{integration.name}` is not running')
+
+    metadata = env_data.read_metadata()
+    agent_type = metadata.get(E2EMetadata.AGENT_TYPE, DEFAULT_AGENT_TYPE)
+    agent = get_agent_interface(agent_type)(app, integration, environment, metadata, env_data.config_file)
+
+    full_args = list(args)
+    trigger_run = False
+    if full_args[0] == 'check':
+        trigger_run = True
+
+        # TODO: remove this when all invocations migrate to the actual command
+        if len(full_args) > 2 and full_args[1] == '--jmx-list':
+            full_args = ['jmx', 'list', full_args[2]]
+        # Automatically inject the integration name if not passed
+        elif len(full_args) == 1 or full_args[1].startswith('-'):
+            full_args.insert(1, intg_name)
+
+    if config_file is None or not trigger_run:
+        try:
+            if trigger_run:
+                _invoke_check_with_retry(agent, full_args, env_vars=env_vars)
+            else:
+                agent.invoke(full_args, env_vars=env_vars)
+        except subprocess.CalledProcessError as e:
+            app.abort(code=e.returncode)
+        except NotImplementedError as e:
+            app.abort(str(e))
+
+        return
+
+    import json
+
+    config = json.loads(Path(config_file).read_text())
+
+    if not env_data.config_file.is_file():
+        try:
+            env_data.write_config(config)
+            _invoke_check_with_retry(agent, full_args, env_vars=env_vars)
+        except NotImplementedError as e:
+            app.abort(str(e))
+        finally:
+            env_data.config_file.unlink()
+    else:
+        temp_config_file = env_data.config_file.parent / f'{env_data.config_file.name}.bak.example'
+        env_data.config_file.replace(temp_config_file)
+        try:
+            env_data.write_config(config)
+            _invoke_check_with_retry(agent, full_args, env_vars=env_vars)
+        except NotImplementedError as e:
+            app.abort(str(e))
+        finally:
+            temp_config_file.replace(env_data.config_file)

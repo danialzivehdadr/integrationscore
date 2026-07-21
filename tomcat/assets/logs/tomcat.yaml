@@ -1,0 +1,884 @@
+id: tomcat
+metric_id: tomcat
+backend_only: false
+facets:
+  - facetType: range
+    groups:
+      - Measure
+    name: Duration
+    path: duration
+    source: log
+    type: double
+    unit:
+      family: time
+      name: nanosecond
+  - groups:
+      - Source Code
+    name: Error Type
+    path: error.kind
+    source: log
+  - groups:
+      - Web Access
+    name: URL Host
+    path: http.url_details.host
+    source: log
+  - groups:
+      - Web Access
+    name: URL Path
+    path: http.url_details.path
+    source: log
+  - groups:
+      - Web Access
+    name: URL Port
+    path: http.url_details.port
+    source: log
+  - groups:
+      - Web Access
+    name: URL scheme
+    path: http.url_details.scheme
+    source: log
+  - groups:
+      - Web Access
+    name: Browser
+    path: http.useragent_details.browser.family
+    source: log
+  - groups:
+      - Web Access
+    name: Device
+    path: http.useragent_details.device.family
+    source: log
+  - groups:
+      - Web Access
+    name: OS
+    path: http.useragent_details.os.family
+    source: log
+  - groups:
+      - Source Code
+    name: Logger Name
+    path: logger.name
+    source: log
+  - groups:
+      - Source Code
+    name: Thread Name
+    path: logger.thread_name
+    source: log
+  - groups:
+      - Garbage Collector
+    name: GC Action
+    path: gc.action
+    source: log
+  - groups:
+      - Garbage Collector
+    name: GC Phase
+    path: gc.phase
+    source: log
+  - facetType: range
+    groups:
+      - Garbage Collector
+    name: Memory Freed
+    path: gc.memory_freed
+    source: log
+    type: double
+    unit:
+      family: bytes
+      name: mebibyte
+  - groups:
+      - OCSF
+    name: Activity ID
+    path: ocsf.activity_id
+    source: log
+    type: integer
+  - groups:
+      - OCSF
+    name: Category ID
+    path: ocsf.category_uid
+    source: log
+    type: integer
+  - groups:
+      - OCSF
+    name: Category
+    path: ocsf.category_name
+    source: log
+  - groups:
+      - OCSF
+    name: Class ID
+    path: ocsf.class_uid
+    source: log
+    type: integer
+  - groups:
+      - OCSF
+    name: Class
+    path: ocsf.class_name
+    source: log
+  - groups:
+      - OCSF
+    name: Source IP Address
+    path: ocsf.src_endpoint.ip
+    source: log
+  - groups:
+      - OCSF
+    name: Status
+    path: ocsf.status
+    source: log
+  - groups:
+      - OCSF
+    name: Status ID
+    path: ocsf.status_id
+    source: log
+    type: integer
+  - groups:
+      - OCSF
+    name: Severity
+    path: ocsf.severity
+    source: log
+  - groups:
+      - OCSF
+    name: Severity ID
+    path: ocsf.severity_id
+    source: log
+    type: integer
+  - groups:
+      - OCSF
+    name: Request URL String
+    path: ocsf.http_request.url.url_string
+    source: log
+pipeline:
+  type: pipeline
+  name: Tomcat
+  enabled: true
+  filter:
+    query: source:tomcat
+  processors:
+    - type: grok-parser
+      name: Parsing Tomcat logs
+      enabled: true
+      source: message
+      samples:
+        - 2000-09-07 14:07:41,508 [main] INFO  MyApp - Entering application.
+        - 2021-01-29 13:42:58,152 [Workflow Event Thread 1] ERROR MyApp - Starting Workflow
+        - 28-Nov-2018 20:51:29.344 INFO [main] org.apache.catalina.startup.Catalina.start Server startup in 1335 ms
+        - 2000-09-07 14:07:44 INFO org.foo.bar:32 - Entering application.
+      grok:
+        supportRules: |
+          _date %{date("yyyy-MM-dd HH:mm:ss"):timestamp}
+          _date_ms %{date("yyyy-MM-dd HH:mm:ss,SSS"):timestamp}
+          _date_new_ms %{date("dd-MMM-yyyy HH:mm:ss.SSS"):timestamp}
+          _duration %{integer:duration}
+          _thread_name %{regex("[^\\]]*"):logger.thread_name}
+          _status %{word:status}
+          _logger_name %{notSpace:logger.name}
+          _context %{notSpace:logger.context}
+          _line %{integer:line}
+          _auth %{notSpace:http.auth:nullIf("-")}
+          _bytes_written %{integer:network.bytes_written}
+          _client_ip %{ipOrHost:network.client.ip}
+          _version HTTP\/%{regex("\\d+\\.\\d+"):http.version}
+          _url %{notSpace:http.url}
+          _ident %{notSpace:http.ident:nullIf("-")}
+          _user_agent %{regex("[^\\\"]*"):http.useragent}
+          _referer %{notSpace:http.referer}
+          _status_code %{integer:http.status_code}
+          _method %{word:http.method}
+          _date_access %{date("dd/MMM/yyyy:HH:mm:ss Z"):timestamp}
+          _x_forwarded_for %{regex("[^\\\"]*"):http._x_forwarded_for:nullIf("-")}
+        matchRules: |
+          Tomcat_default (%{_date_ms}|%{_duration})\s+\[%{_thread_name}\]\s+%{_status}\s+%{_logger_name}\s*(%{_context}\s*)?- %{data:msg}((\n|\t)%{data:error.stack})?
+
+          Tomcat_default_2 %{_date_new_ms}\s+%{_status}\s+\[%{_thread_name}\]\s+%{_logger_name} %{data:msg}((\n|\t)%{data:error.stack})?
+
+          Tomcat_recommended %{_date} %{_status}\s+%{_logger_name}:%{_line}\s+- %{data:msg}((\n|\t)%{data:error.stack})?
+
+          access.common %{_client_ip} %{_ident} %{_auth} \[%{_date_access}\] "(?>%{_method} |)%{_url}(?> %{_version}|)" %{_status_code} (?>%{_bytes_written}|-)
+
+          access.combined %{access.common} "%{_referer}" "%{_user_agent}"( "%{_x_forwarded_for}")?.*
+
+    - type: grok-parser
+      name: Parsing Stack traces
+      enabled: true
+      source: error.stack
+      grok:
+        supportRules: |
+        matchRules: |
+          error_rule %{notSpace:error.kind}: %{data:error.message}(\n|\t).*
+
+      samples:
+        - |
+          java.lang.NullPointerException: this is my error message
+           at org.apache.struts2.MyClass.checkCacheEntryyy(MyClass.java: 22)
+    - type: grok-parser
+      name: Parsing Tomcat GC logs
+      enabled: true
+      source: message
+      samples:
+        - "2019-03-20T14:36:30.111+0000: 41.098: [GC concurrent-mark-end, 0.0272767 secs]"
+        - "2019-03-20T14:36:30.111+0000: 41.071: [GC concurrent-mark-start]"
+        - "2019-03-20T14:36:30.111+0000: 41.099: [Finalize Marking, 0.0011661 secs]"
+      grok:
+        supportRules: |
+          _gc_event_phase_duration %{date("yyyy-MM-dd'T'HH:mm:ss.SSSZ"):timestamp}: %{notSpace}\s\[GC\s%{notSpace:gc.action}(\s%{regex("([^,]*)"):gc.phase},)?(\s%{number:duration:scale(1000000000)}\ssecs)?]
+
+          _parallel \[Parallel\sTime:\s%{number:parallel_time}\sms,\sGC\sWorkers:\s%{number:gc_worker.count}]
+
+          _gc_worker_start \[GC\sWorker\sStart\s\(ms\):\sMin:\s%{number:gc_worker.start.min},\sAvg:\s%{number:gc_worker.start.avg},\sMax:\s%{number:gc_worker.start.max},\sDiff:\s%{number:gc_worker.start.diff}]
+
+          _ext_root_scanning \[Ext\sRoot\sScanning\s\(ms\):\sMin:\s%{number:exit_root_scanning.min},\sAvg:\s%{number:exit_root_scanning.avg},\sMax:\s%{number:exit_root_scanning.max},\sDiff:\s%{number:exit_root_scanning.diff},\sSum:\s%{number:exit_root_scanning.sum}]
+
+          _update_rs \[Update\sRS\s\(ms\):\sMin:\s%{number:update_rs.min},\sAvg:\s%{number:update_rs.avg},\sMax:\s%{number:update_rs.max},\sDiff:\s%{number:update_rs.diff},\sSum:\s%{number:update_rs.sum}]
+
+          _gcc_event %{date("yyyy-MM-dd'T'HH:mm:ss.SSSZ"):timestamp}:%{notSpace}\s\[%{regex("([^\\]]*)"):event.type}]
+
+          _processed_buffer \[Processed\sBuffers:\sMin:\s%{number:processed_buffer.min},\sAvg:\s%{number:processed_buffer.avg},\sMax:\s%{number:processed_buffer.max},\sDiff:\s%{number:processed_buffer.diff},\sSum:\s%{number:processed_buffer.sum}]
+
+          _scan_rs \[Scan\sRS\s\(ms\):\sMin:\s%{number:scan_rs.min},\sAvg:\s%{number:scan_rs.avg},\sMax:\s%{number:scan_rs.max},\sDiff:\s%{number:scan_rs.diff},\sSum:\s%{number:scan_rs.sum}]
+
+          _code_root_scan \[Code\sRoot\sScanning\s\(ms\):\sMin:\s%{number:code_root.scan.min},\sAvg:\s%{number:code_root.scan.avg},\sMax:\s%{number:code_root.scan.max},\sDiff:\s%{number:code_root.scan.diff},\sSum:\s%{number:code_root.scan.sum}]
+
+          _object_copy \[Object\sCopy\s\(ms\):\sMin:\s%{number:object_copy.min},\sAvg:\s%{number:object_copy.avg},\sMax:\s%{number:object_copy.max},\sDiff:\s%{number:object_copy.diff},\sSum:\s%{number:object_copy.sum}]
+
+          _termination \[Termination\s\(ms\):\sMin:\s%{number:termination.min},\sAvg:\s%{number:termination.avg},\sMax:\s%{number:termination.max},\sDiff:\s%{number:termination.diff},\sSum:\s%{number:termination.sum}]
+
+          _termination_attempts \[Termination\sAttempts:\sMin:\s%{number:termination.attempts.min},\sAvg:\s%{number:termination.attempts.avg},\sMax:\s%{number:termination.attempts.max},\sDiff:\s%{number:termination.attempts.diff},\sSum:\s%{number:termination.attempts.sum}]
+
+          _gc_worker_other \[GC\sWorker\sOther\s\(ms\):\sMin:\s%{number:gc_worker.other.min},\sAvg:\s%{number:gc_worker.other.avg},\sMax:\s%{number:gc_worker.other.max},\sDiff:\s%{number:gc_worker.other.diff},\sSum:\s%{number:gc_worker.other.sum}]
+
+          _gc_worker_total \[GC\sWorker\sTotal\s\(ms\):\sMin:\s%{number:gc_worker.total.min},\sAvg:\s%{number:gc_worker.total.avg},\sMax:\s%{number:gc_worker.total.max},\sDiff:\s%{number:gc_worker.total.diff},\sSum:\s%{number:gc_worker.total.sum}]
+
+          _gc_worker_end \[GC\sWorker\sEnd\s\(ms\):\sMin:\s%{number:gc_worker.end.min},\sAvg:\s%{number:gc_worker.end.avg},\sMax:\s%{number:gc_worker.end.max},\sDiff:\s%{number:gc_worker.end.diff}]
+
+          _code_root_fixup \[Code\sRoot\sFixup:\s%{number:code_root.fixup}\sms]
+
+          _code_root_purge \[Code\sRoot\sPurge:\s%{number:code_root.purge}\sms]
+
+          _clear_ct \[Clear\sCT:\s%{number:clear_ct}\sms]
+
+          _other \[Other:\s%{number:other}\sms]
+
+          _choose_cset \[Choose\sCSet:\s%{number:choose_cset}\sms]
+
+          _ref_proc \[Ref\sProc:\s%{number:ref.proc}\sms]
+
+          _ref_enq \[Ref\sEnq:\s%{number:ref.enq}\sms]
+
+          _redirty_cards \[Redirty\sCards:\s%{number:redirty_cards}\sms]
+
+          _humongous_register \[Humongous\sRegister:\s%{number:humongous_register}\sms]
+
+          _humongous_reclaim \[Humongous\sReclaim:\s%{number:humongous_reclaim}\sms]
+
+          _free \[Free\sCSet:\s%{number:free}\sms]
+
+          _memory_usage \[Eden: (%{number:eden.memory_before}M|%{number:eden.memory_before:scale(1000)}G)\((%{number:eden.memory_allocated_before}M|%{number:eden.memory_allocated_before:scale(1000)}G)\)->%{number:eden.memory_after}B\((%{number:eden.memory_allocated_after}M|%{number:eden.memory_allocated_after:scale(1000)}G)\)\sSurvivors:\s%{number:survivor.memory_before}M->%{number:survivor.memory_after}M\sHeap:\s(%{number:heap.memory_before}M|%{number:heap.memory_before:scale(1000)}G)\((%{number:heap.memory_allocated_before}M|%{number:heap.memory_allocated_before:scale(1000)}G)\)->%{number:heap.memory_after}M\((%{number:heap.memory_allocated_after}M|%{number:heap.memory_allocated_after:scale(1000)}G)\)]
+
+          _times \[Times:\suser=%{number:times.user}\ssys=%{number:times.system},\sreal=%{number:times.real}\ssecs]
+
+        matchRules: |
+          Tomcat_gc_event %{date("yyyy-MM-dd'T'HH:mm:ss.SSSZ"):timestamp}: %{notSpace}\s\[GC\s%{notSpace:gc.action}(\s%{regex("([^,]*)"):gc.phase},)?(\s%{number:duration:scale(1000000000)}\ssecs)?]
+
+          Tomcat_non_gc_event %{date("yyyy-MM-dd'T'HH:mm:ss.SSSZ"):timestamp}: %{notSpace}\s\[%{regex("([^,]*)"):gc.action}(,\s%{number:duration:scale(1000000000)}\ssecs)?]
+
+          Tomcat_longform %{_gc_event_phase_duration}(\r|\n|\s)*%{_parallel}(\r|\n|\s)*%{_gc_worker_start}(\r|\n|\s)*%{_ext_root_scanning}(\r|\n|\s)*%{_update_rs}(\r|\n|\s)*%{_processed_buffer}(\r|\n|\s)*%{_scan_rs}(\r|\n|\s)*%{_code_root_scan}(\r|\n|\s)*%{_object_copy}(\r|\n|\s)*%{_termination}(\r|\n|\s)*%{_termination_attempts}(\r|\n|\s)*%{_gc_worker_other}(\r|\n|\s)*%{_gc_worker_total}(\r|\n|\s)*%{_gc_worker_end}(\r|\n|\s)*%{_code_root_fixup}(\r|\n|\s)*%{_code_root_purge}(\r|\n|\s)*%{_clear_ct}(\r|\n|\s)*%{_other}(\r|\n|\s)*%{_choose_cset}(\r|\n|\s)*%{_ref_proc}(\r|\n|\s)*%{_ref_enq}(\r|\n|\s)*%{_redirty_cards}(\r|\n|\s)*%{_humongous_register}(\r|\n|\s)*%{_humongous_reclaim}(\r|\n|\s)*%{_free}(\r|\n|\s)*%{_memory_usage}(\r|\n|\s)*%{_times}
+
+          #Log samples:
+          #Timestamp,action, duration
+          #Timestamp,action
+          #Timestamp,no GC action, duration
+
+    - type: date-remapper
+      name: Define `timestamp` as the official date of the log
+      enabled: true
+      sources:
+        - timestamp
+    - type: category-processor
+      name: Categorise status code
+      enabled: true
+      categories:
+        - filter:
+            query: "@http.status_code:[200 TO 299]"
+          name: OK
+        - filter:
+            query: "@http.status_code:[300 TO 399]"
+          name: notice
+        - filter:
+            query: "@http.status_code:[400 TO 499]"
+          name: warning
+        - filter:
+            query: "@http.status_code:[500 TO 599]"
+          name: error
+      target: http.status_category
+    - type: status-remapper
+      name: Define `http.status_category`, `status` as the official status of the log
+      enabled: true
+      sources:
+        - http.status_category
+        - status
+    - type: message-remapper
+      name: Define `msg` as the official message of the log
+      enabled: true
+      sources:
+        - msg
+    - type: url-parser
+      name: ""
+      enabled: true
+      sources:
+        - http.url
+      target: http.url_details
+    - type: user-agent-parser
+      name: ""
+      enabled: true
+      sources:
+        - http.useragent
+      target: http.useragent_details
+      encoded: false
+
+    - type: arithmetic-processor
+      name: Calculate GC memory freed
+      enabled: true
+      expression: (heap.memory_before - heap.memory_after)
+      target: gc.memory_freed
+      replaceMissing: false
+
+    - type: pipeline
+      name: OCSF pre transformations
+      enabled: true
+      ocsf:
+        isOcsf: true
+      filter:
+        query: "*"
+      processors:
+        - type: string-builder-processor
+          name: Add product name
+          enabled: true
+          template: "Apache Tomcat"
+          target: ocsf.metadata.product.name
+          replaceMissing: false
+        - type: string-builder-processor
+          name: Add product vendor
+          enabled: true
+          template: "Apache Software Foundation"
+          target: ocsf.metadata.product.vendor_name
+          replaceMissing: false
+    - type: pipeline
+      name: OCSF sub pipeline for class Memory Activity [1004]
+      enabled: true
+      ocsf:
+        isOcsf: true
+      filter:
+        query: "@gc.action:*"
+      processors:
+        - type: arithmetic-processor
+          name: Convert GC duration to milliseconds
+          enabled: true
+          expression: duration / 1000000
+          target: ocsf.duration
+          replaceMissing: false
+        - type: string-builder-processor
+          name: Add ocsf.actor.process.name
+          enabled: true
+          template: "java"
+          target: ocsf.actor.process.name
+          replaceMissing: false
+        - type: string-builder-processor
+          name: Add ocsf.actor.process.uid
+          enabled: true
+          template: "unknown"
+          target: ocsf.actor.process.uid
+          replaceMissing: false
+        - type: string-builder-processor
+          name: Add ocsf.process.name
+          enabled: true
+          template: "java"
+          target: ocsf.process.name
+          replaceMissing: false
+        - type: string-builder-processor
+          name: Add ocsf.process.uid
+          enabled: true
+          template: "unknown"
+          target: ocsf.process.uid
+          replaceMissing: false
+        - type: string-builder-processor
+          name: Add ocsf.device.name
+          enabled: true
+          template: "unknown"
+          target: ocsf.device.name
+          replaceMissing: false
+        - type: schema-processor
+          name: Apply OCSF schema for 1004
+          enabled: true
+          mappers:
+            - type: schema-category-mapper
+              name: ocsf.activity_id
+              categories:
+                - filter:
+                    query: "@gc.action:pause"
+                  name: Allocate Page
+                  id: 1
+                - filter:
+                    query: "@gc.action:*"
+                  name: Other
+                  id: 99
+              targets:
+                name: ocsf.activity_name
+                id: ocsf.activity_id
+            - type: schema-category-mapper
+              name: ocsf.severity_id
+              categories:
+                - filter:
+                    query: "@gc.action:*"
+                  name: Informational
+                  id: 1
+              targets:
+                name: ocsf.severity
+                id: ocsf.severity_id
+            - type: schema-remapper
+              name: Map `gc.action` to `ocsf.message`
+              sources:
+                - gc.action
+              target: ocsf.message
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `ocsf.duration` to `ocsf.duration`
+              sources:
+                - ocsf.duration
+              target: ocsf.duration
+              targetFormat: integer
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `ocsf.device.name` to `ocsf.device.name`
+              sources:
+                - ocsf.device.name
+              target: ocsf.device.name
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-category-mapper
+              name: ocsf.device.type_id
+              categories:
+                - filter:
+                    query: "@gc.action:*"
+                  name: Unknown
+                  id: 0
+              targets:
+                name: ocsf.device.type
+                id: ocsf.device.type_id
+            - type: schema-remapper
+              name: Map `ocsf.actor.process.name` to `ocsf.actor.process.name`
+              sources:
+                - ocsf.actor.process.name
+              target: ocsf.actor.process.name
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `ocsf.actor.process.uid` to `ocsf.actor.process.uid`
+              sources:
+                - ocsf.actor.process.uid
+              target: ocsf.actor.process.uid
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `ocsf.process.name` to `ocsf.process.name`
+              sources:
+                - ocsf.process.name
+              target: ocsf.process.name
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `ocsf.process.uid` to `ocsf.process.uid`
+              sources:
+                - ocsf.process.uid
+              target: ocsf.process.uid
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `timestamp` to `ocsf.time`
+              sources:
+                - timestamp
+              target: ocsf.time
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `ocsf.metadata.product.name` to `ocsf.metadata.product.name`
+              sources:
+                - ocsf.metadata.product.name
+              target: ocsf.metadata.product.name
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `ocsf.metadata.product.vendor_name` to `ocsf.metadata.product.vendor_name`
+              sources:
+                - ocsf.metadata.product.vendor_name
+              target: ocsf.metadata.product.vendor_name
+              preserveSource: true
+              overrideOnConflict: true
+          schema:
+            schemaType: ocsf
+            version: 1.5.0
+            className: Memory Activity
+            classUid: 1004
+            extensions: []
+            profiles: []
+    - type: pipeline
+      name: OCSF sub pipeline for class HTTP Activity [4002]
+      enabled: true
+      ocsf:
+        isOcsf: true
+      filter:
+        query: "@http.method:*"
+      processors:
+        - type: grok-parser
+          name: Parsing `ocsf.http_request.url.query_string` from `http.url`
+          enabled: true
+          source: http.url
+          samples:
+            - /datadoghq/company?test=var1%20Pl
+          grok:
+            supportRules: ""
+            matchRules: |
+              extract_query_string %{regex("[^?]+")}\?%{regex(".*"):ocsf.http_request.url.query_string}
+        - type: schema-processor
+          name: Apply OCSF schema for 4002
+          enabled: true
+          mappers:
+            - type: schema-category-mapper
+              name: ocsf.activity_id
+              categories:
+                - filter:
+                    query: "@http.method:CONNECT"
+                  name: Connect
+                  id: 1
+                - filter:
+                    query: "@http.method:DELETE"
+                  name: Delete
+                  id: 2
+                - filter:
+                    query: "@http.method:GET"
+                  name: Get
+                  id: 3
+                - filter:
+                    query: "@http.method:HEAD"
+                  name: Head
+                  id: 4
+                - filter:
+                    query: "@http.method:OPTIONS"
+                  name: Options
+                  id: 5
+                - filter:
+                    query: "@http.method:POST"
+                  name: Post
+                  id: 6
+                - filter:
+                    query: "@http.method:PUT"
+                  name: Put
+                  id: 7
+                - filter:
+                    query: "@http.method:TRACE"
+                  name: Trace
+                  id: 8
+                - filter:
+                    query: "@http.method:PATCH"
+                  name: Patch
+                  id: 9
+                - filter:
+                    query: "@http.method:*"
+                  name: Other
+                  id: 99
+              targets:
+                name: ocsf.activity_name
+                id: ocsf.activity_id
+            - type: schema-category-mapper
+              name: ocsf.severity_id
+              categories:
+                - filter:
+                    query: "@http.method:*"
+                  name: Informational
+                  id: 1
+              targets:
+                name: ocsf.severity
+                id: ocsf.severity_id
+            - type: schema-category-mapper
+              name: ocsf.status_id
+              categories:
+                - filter:
+                    query: "@http.status_code:[200 TO 399]"
+                  name: Success
+                  id: 1
+                - filter:
+                    query: "@http.status_code:[400 TO 599]"
+                  name: Failure
+                  id: 2
+                - filter:
+                    query: "*"
+                  name: Unknown
+                  id: 0
+              targets:
+                name: ocsf.status
+                id: ocsf.status_id
+            - type: schema-remapper
+              name: Map `http.method` to `ocsf.http_request.http_method`
+              sources:
+                - http.method
+              target: ocsf.http_request.http_method
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `http.url` to `ocsf.http_request.url.url_string`
+              sources:
+                - http.url
+              target: ocsf.http_request.url.url_string
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `http.url_details.path` to `ocsf.http_request.url.path`
+              sources:
+                - http.url_details.path
+              target: ocsf.http_request.url.path
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `ocsf.http_request.url.query_string` to `ocsf.http_request.url.query_string`
+              sources:
+                - ocsf.http_request.url.query_string
+              target: ocsf.http_request.url.query_string
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `http.version` to `ocsf.http_request.version`
+              sources:
+                - http.version
+              target: ocsf.http_request.version
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `http.useragent` to `ocsf.http_request.user_agent`
+              sources:
+                - http.useragent
+              target: ocsf.http_request.user_agent
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `http.referer` to `ocsf.http_request.referrer`
+              sources:
+                - http.referer
+              target: ocsf.http_request.referrer
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `http.status_code` to `ocsf.http_response.code`
+              sources:
+                - http.status_code
+              target: ocsf.http_response.code
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `network.client.ip` to `ocsf.src_endpoint.ip`
+              sources:
+                - network.client.ip
+              target: ocsf.src_endpoint.ip
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `network.bytes_written` to `ocsf.traffic.bytes_out`
+              sources:
+                - network.bytes_written
+              target: ocsf.traffic.bytes_out
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `timestamp` to `ocsf.time`
+              sources:
+                - timestamp
+              target: ocsf.time
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `ocsf.metadata.product.name` to `ocsf.metadata.product.name`
+              sources:
+                - ocsf.metadata.product.name
+              target: ocsf.metadata.product.name
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `ocsf.metadata.product.vendor_name` to `ocsf.metadata.product.vendor_name`
+              sources:
+                - ocsf.metadata.product.vendor_name
+              target: ocsf.metadata.product.vendor_name
+              preserveSource: true
+              overrideOnConflict: true
+          schema:
+            schemaType: ocsf
+            version: 1.5.0
+            className: HTTP Activity
+            classUid: 4002
+            extensions: []
+            profiles: []
+    - type: pipeline
+      name: OCSF sub pipeline for class Application Lifecycle [6002]
+      enabled: true
+      ocsf:
+        isOcsf: true
+      filter:
+        query: "@logger.name:* -@status:ERROR"
+      processors:
+        - type: schema-processor
+          name: Apply OCSF schema for 6002
+          enabled: true
+          mappers:
+            - type: schema-category-mapper
+              name: ocsf.activity_id
+              categories:
+                - filter:
+                    query: "@logger.name:*.install*"
+                  name: Install
+                  id: 1
+                - filter:
+                    query: "@logger.name:*.start*"
+                  name: Start
+                  id: 3
+                - filter:
+                    query: "@logger.name:*.stop*"
+                  name: Stop
+                  id: 4
+                - filter:
+                    query: "@logger.name:*.restart*"
+                  name: Restart
+                  id: 5
+                - filter:
+                    query: "@logger.name:*"
+                  name: Other
+                  id: 99
+              targets:
+                name: ocsf.activity_name
+                id: ocsf.activity_id
+            - type: schema-category-mapper
+              name: ocsf.severity_id
+              categories:
+                - filter:
+                    query: "*"
+                  name: Informational
+                  id: 1
+              targets:
+                name: ocsf.severity
+                id: ocsf.severity_id
+            - type: schema-remapper
+              name: Map `logger.name` to `ocsf.app.name`
+              sources:
+                - logger.name
+              target: ocsf.app.name
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `message` to `ocsf.message`
+              sources:
+                - message
+              target: ocsf.message
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `status` to `ocsf.status`
+              sources:
+                - status
+              target: ocsf.status
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `timestamp` to `ocsf.time`
+              sources:
+                - timestamp
+              target: ocsf.time
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `ocsf.metadata.product.name` to `ocsf.metadata.product.name`
+              sources:
+                - ocsf.metadata.product.name
+              target: ocsf.metadata.product.name
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `ocsf.metadata.product.vendor_name` to `ocsf.metadata.product.vendor_name`
+              sources:
+                - ocsf.metadata.product.vendor_name
+              target: ocsf.metadata.product.vendor_name
+              preserveSource: true
+              overrideOnConflict: true
+          schema:
+            schemaType: ocsf
+            version: 1.5.0
+            className: Application Lifecycle
+            classUid: 6002
+            extensions: []
+            profiles: []
+    - type: pipeline
+      name: OCSF sub pipeline for class Application Error [6008]
+      enabled: true
+      ocsf:
+        isOcsf: true
+      filter:
+        query: "@logger.name:* @status:ERROR"
+      processors:
+        - type: schema-processor
+          name: Apply OCSF schema for 6008
+          enabled: true
+          mappers:
+            - type: schema-category-mapper
+              name: ocsf.activity_id
+              categories:
+                - filter:
+                    query: "@status:*"
+                  name: General Error
+                  id: 1
+              targets:
+                name: ocsf.activity_name
+                id: ocsf.activity_id
+            - type: schema-category-mapper
+              name: ocsf.severity_id
+              categories:
+                - filter:
+                    query: "*"
+                  name: Informational
+                  id: 1
+              targets:
+                name: ocsf.severity
+                id: ocsf.severity_id
+            - type: schema-remapper
+              name: Map `message` to `ocsf.message`
+              sources:
+                - message
+              target: ocsf.message
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `status` to `ocsf.status`
+              sources:
+                - status
+              target: ocsf.status
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `timestamp` to `ocsf.time`
+              sources:
+                - timestamp
+              target: ocsf.time
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `ocsf.metadata.product.name` to `ocsf.metadata.product.name`
+              sources:
+                - ocsf.metadata.product.name
+              target: ocsf.metadata.product.name
+              preserveSource: true
+              overrideOnConflict: true
+            - type: schema-remapper
+              name: Map `ocsf.metadata.product.vendor_name` to `ocsf.metadata.product.vendor_name`
+              sources:
+                - ocsf.metadata.product.vendor_name
+              target: ocsf.metadata.product.vendor_name
+              preserveSource: true
+              overrideOnConflict: true
+          schema:
+            schemaType: ocsf
+            version: 1.5.0
+            className: Application Error
+            classUid: 6008
+            extensions: []
+            profiles: []

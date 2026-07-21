@@ -1,0 +1,54 @@
+name: Kyoto Tycoon
+fleet_configurable: true
+
+files:
+  - name: kyototycoon.yaml
+
+    options:
+      - template: init_config
+        options:
+          - template: init_config/http
+          - template: init_config/default
+
+      - template: instances
+        options:
+          - name: report_url
+            description: The report URL should be a URL to the Kyoto Tycoon "report" RPC endpoint.
+            fleet_configurable: true
+            required: true
+            value:
+              type: string
+              example: http://localhost:1978/rpc/report
+
+          - name: name
+            description: Name of your Kyoto instance. Enter a name for your Kyoto instance if you have multiple ones.
+            fleet_configurable: true
+            value:
+              type: string
+
+          - template: instances/http
+          - template: instances/default
+
+      - template: logs
+        example:
+        - type: file
+          path: /var/data/ktserver.log
+          source: kyototycoon
+
+  - name: auto_conf.yaml
+    options:
+      - template: ad_identifiers
+        overrides:
+          value.example:
+            - kyototycoon
+      - template: init_config
+        options: []
+      - template: instances
+        options:
+        - name: report_url
+          required: true
+          description: The report URL should be a URL to the Kyoto Tycoon "report" RPC endpoint.
+          value:
+            type: string
+            example: http://%%host%%:1978/rpc/report
+          fleet_configurable: false

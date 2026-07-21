@@ -1,0 +1,55 @@
+id: clickhouse
+metric_id: clickhouse
+backend_only: false
+facets:
+  - groups:
+      - ClickHouse
+    name: ClickHouse Service Name
+    path: clickhouse.service
+    source: log
+  - groups:
+      - ClickHouse
+    name: ClickHouse Application Name
+    path: clickhouse.application.id
+    source: log
+pipeline:
+  type: pipeline
+  name: ClickHouse
+  enabled: true
+  filter:
+    query: source:clickhouse
+  processors:
+    - type: grok-parser
+      name: Parsing ClickHouse logs
+      enabled: true
+      source: message
+      grok:
+        supportRules: |
+          _date %{date("yyyy.MM.dd HH:mm:ss.SSSSSS"):timestamp}
+          _pid %{integer:pid}
+          _level %{word:level}
+          _service_common %{notSpace:clickhouse.service}
+          _service_verbose %{regex(".+?"):clickhouse.service}
+          _app \(%{regex("[^)]+"):clickhouse.application.id}\)
+          _uuid %{regex("[^}]*")}
+        matchRules: |
+          clickhouse %{_date} \[ %{_pid} \] \{%{_uuid}\} <%{_level}> (%{_service_common}( %{_app})?|%{_service_verbose}): %{data:message}
+      samples:
+        - '2025.09.01 13:39:22.975130 [ 81 ] {} <Warning> Application: Integrity check of the executable skipped because the reference checksum could not be read.'
+        - '2025.09.01 14:09:28.195723 [ 1110 ] {} <Information> system.query_log (fedb888e-9036-4aa8-b24d-0e8bd6840a33) (MergerMutator): Selected 6 parts from 202509_1_84_17 to 202509_89_89_0. Merge selecting phase took: 0ms'
+        - '2025.09.01 14:09:28.208450 [ 1355 ] {fedb888e-9036-4aa8-b24d-0e8bd6840a33::202509_1_89_18} <Information> system.query_log (fedb888e-9036-4aa8-b24d-0e8bd6840a33) (MergerMutator): Merged 6 parts: [202509_1_84_17, 202509_89_89_0] -> 202509_1_89_18'
+    - type: date-remapper
+      name: Define `timestamp` as the official date of the log
+      enabled: true
+      sources:
+        - timestamp
+    - type: status-remapper
+      name: Define `level` as the official status of the log
+      enabled: true
+      sources:
+        - level
+    - type: message-remapper
+      name: Define `message` as the official message of the log
+      enabled: true
+      sources:
+        - message

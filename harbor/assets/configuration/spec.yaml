@@ -1,0 +1,33 @@
+name: Harbor
+fleet_configurable: true
+files:
+- name: harbor.yaml
+  options:
+  - template: init_config
+    options:
+    - template: init_config/http
+    - template: init_config/default
+  - template: instances
+    options:
+    - name: url
+      description: The Harbor HTTP url.
+      fleet_configurable: true
+      formats: ["url"]
+      required: true
+      value:
+        type: string
+    - template: instances/http
+      overrides:
+        username.description: |
+          The username to use for authentication against the Harbor API.
+          Note: Some metrics and service checks requires an admin account to be collected.
+          This includes chartmuseum.status, replication registries data, volume information.
+        username.required: true
+        password.description: The password used together with the username for authentication against the Harbor API.
+        password.required: true
+    - template: instances/default
+  - template: logs
+    example:
+      type: file
+      path: /var/log/harbor/*.log
+      source: harbor
