@@ -1,0 +1,20 @@
+[env.collectors.datadog-checks]
+check-types = true
+mypy-files = [
+  "src/ddev",
+]
+
+[envs.default]
+python = "3.13"
+e2e-env = false
+dependencies = [
+  "pyyaml",
+  "vcrpy",
+  # Test dependencies previously from datadog-checks-dev
+  "pytest==8.1.1",
+  "pytest-asyncio>=0.23.4",
+  "pytest-benchmark[histogram]>=4.0.0",
+  "pytest-cov>=2.6.1",
+  "pytest-memray>=1.4.0; platform_system=='Linux' or platform_system=='Darwin'",
+  "pytest-mock",
+]

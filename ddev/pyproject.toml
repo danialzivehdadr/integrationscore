@@ -1,0 +1,172 @@
+[build-system]
+requires = ["hatchling>=1.17.1", "hatch-vcs>=0.3.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ddev"
+description = "The Datadog Agent integration developer tool"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "BSD-3-Clause"
+keywords = [
+    "datadog",
+    "agent",
+    "integration",
+]
+authors = [
+    { name = "Datadog", email = "packages@datadoghq.com" },
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: BSD License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "anthropic>=0.18.0",
+    "click~=8.1.6",
+    "coverage",
+    "datadog-api-client==2.20.0",
+    # Dependencies ported from datadog-checks-dev[cli]
+    "aiohttp",
+    "aiomultiprocess",
+    "atomicwrites",
+    "beautifulsoup4==4.12.3",
+    "black==23.12.1",
+    "build>=0.7.0",
+    "codespell",
+    "colorama",
+    "datamodel-code-generator~=0.25.6",
+    "in-toto==2.0.0",
+    "jsonschema",
+    "markdown",
+    "orjson",
+    "packaging",
+    "pathspec>=0.10.0",
+    "pip-tools",
+    "platformdirs>=2.0.0a3",
+    "pydantic>=2.0.2",
+    "pysmi==1.6.2",
+    "pyyaml>=5.4.1",
+    "securesystemslib[crypto]==0.28.0",
+    "semver>=2.13.0",
+    "tabulate>=0.8.9",
+    "toml>=0.9.4, <1.0.0",
+    "towncrier==23.11.0",
+    "tox>=3.12.1, <4.0.0",
+    "twine>=1.11.0",
+    "virtualenv<20.22.0",
+    "hatch>=1.8.1",
+    "httpx",
+    "jsonpointer",
+    "pluggy",
+    "rich>=12.5.1",
+    "stamina==23.2.0",
+    "tomli; python_version < '3.11'",
+    "tomli-w",
+    "tomlkit",
+    "tqdm",
+    "requests",
+    "matplotlib",
+    "squarify",
+    "datadog",
+]
+dynamic = ["version"]
+
+[project.urls]
+Source = "https://github.com/DataDog/integrations-core"
+
+[project.scripts]
+ddev = "ddev.cli:main"
+ddev-starship = "ddev.plugin.external.starship.prompt:main"
+
+[project.entry-points.hatch]
+datadog_checks = "ddev.plugin.external.hatch"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+root = ".."
+version_scheme = "python-simplified-semver"
+local_scheme = "no-local-version"
+parentdir_prefix_version = "ddev-"
+git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "ddev-v*"]
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/ddev/_version.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["src"]
+
+[tool.hatch.build.targets.binary]
+scripts = ["ddev"]
+
+# Keep Black configuration to generate models through validate
+# Switch to Ruff after it provides a Python API
+[tool.black]
+include = '\.pyi?$'
+line-length = 120
+skip-string-normalization = true
+target-version = ["py313"]
+extend-exclude = "src/ddev/_version.py"
+
+[tool.ruff]
+extend = "../pyproject.toml"
+exclude = ["src/ddev/tooling/templates"]
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+# Rules were ported over from the legacy flake8 settings for parity
+# All the rules can be found here: https://beta.ruff.rs/docs/rules/
+select = [
+  "B",
+  "C",
+  "E",
+  "F",
+  "G",
+  "W",
+  "I",
+  "TID252",
+]
+ignore = [
+  # From legacy flake8 settings
+  "E722",
+  "E741",
+  "B015",
+  "B904",
+  # Allow non-abstract empty methods in abstract base classes
+  "B027",
+  # Ignore McCabe complexity
+  "C901",
+]
+unfixable = [
+  # Don't touch unused imports
+  "F401",
+]
+
+[tool.ruff.format]
+quote-style = "preserve"
+exclude = [
+  "src/ddev/_version.py"
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ddev"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
+
+[tool.ruff.lint.per-file-ignores]
+#Tests can use assertions and relative imports
+"**/tests/**/*" = ["I252"]
+# Ported code from datadog_checks_dev - pre-existing style, will modernize incrementally
+"src/ddev/tooling/**/*" = ["TID252", "F401"]
+
+[tool.pytest.ini_options]
+# Only collect from the tests/ directory, not from src/ (which contains template files)
+testpaths = ["tests"]
