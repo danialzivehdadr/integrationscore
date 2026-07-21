@@ -1,0 +1,9 @@
+parameters:
+  check: ''
+
+steps:
+# Need unbuffered IO, see: https://github.com/Microsoft/azure-pipelines-yaml/issues/106
+- script: python -u .azure-pipelines/scripts/run.py ${{ parameters.check }}
+  displayName: 'Set up integration requirements'
+  env:
+    DOCKER_PASSWORD: $(DOCKER_PASSWORD)
