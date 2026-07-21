@@ -1,0 +1,565 @@
+{
+    "title": "CockroachDB Overview",
+    "description": "This dashboard provides a high-level overview of key CockroachDB metrics so you can ensure that your cluster is available, serving queries, and has sufficient resources to maintain high levels of performance. Further reading on CockroachDB monitoring:\n\n- [Monitor CockroachDB with Datadog](https://www.datadoghq.com/blog/monitor-cockroachdb-performance-metrics-with-datadog/)\n\n- [Datadog's CockroachDB docs](https://docs.datadoghq.com/integrations/cockroachdb/).\n\nClone this template dashboard to make changes and add your own graphs and widgets.",
+    "widgets": [
+        {
+            "id": 0,
+            "definition": {
+                "type": "image",
+                "url": "/static/images/logos/cockroachdb_large.svg",
+                "sizing": "zoom"
+            },
+            "layout": {
+                "x": 1,
+                "y": 2,
+                "width": 29,
+                "height": 9
+            }
+        },
+        {
+            "id": 1,
+            "definition": {
+                "type": "query_value",
+                "requests": [
+                    {
+                        "q": "avg:cockroachdb.syscount{$scope}",
+                        "aggregator": "avg"
+                    }
+                ],
+                "custom_links": [],
+                "title": "KV Pairs",
+                "title_size": "16",
+                "title_align": "left",
+                "autoscale": true,
+                "precision": 2
+            },
+            "layout": {
+                "x": 1,
+                "y": 26,
+                "width": 14,
+                "height": 12
+            }
+        },
+        {
+            "id": 2,
+            "definition": {
+                "type": "query_value",
+                "requests": [
+                    {
+                        "q": "avg:cockroachdb.liveness.livenodes{$scope}",
+                        "aggregator": "avg"
+                    }
+                ],
+                "custom_links": [],
+                "title": "Live Nodes",
+                "title_size": "16",
+                "title_align": "left",
+                "autoscale": true,
+                "precision": 2
+            },
+            "layout": {
+                "x": 1,
+                "y": 39,
+                "width": 14,
+                "height": 13
+            }
+        },
+        {
+            "id": 3,
+            "definition": {
+                "type": "timeseries",
+                "requests": [
+                    {
+                        "q": "avg:cockroachdb.sys.cpu.sys.percent{$scope}",
+                        "display_type": "line",
+                        "style": {
+                            "palette": "dog_classic",
+                            "line_type": "solid",
+                            "line_width": "normal"
+                        }
+                    }
+                ],
+                "custom_links": [],
+                "title": "System CPU (%)",
+                "title_size": "16",
+                "title_align": "left",
+                "show_legend": false,
+                "legend_size": "0"
+            },
+            "layout": {
+                "x": 31,
+                "y": 27,
+                "width": 41,
+                "height": 18
+            }
+        },
+        {
+            "id": 4,
+            "definition": {
+                "type": "timeseries",
+                "requests": [
+                    {
+                        "q": "avg:cockroachdb.sys.cpu.user.percent{$scope}",
+                        "display_type": "line",
+                        "style": {
+                            "palette": "dog_classic",
+                            "line_type": "solid",
+                            "line_width": "normal"
+                        }
+                    }
+                ],
+                "custom_links": [],
+                "title": "Current User CPU (%)",
+                "title_size": "16",
+                "title_align": "left",
+                "show_legend": false,
+                "legend_size": "0"
+            },
+            "layout": {
+                "x": 31,
+                "y": 8,
+                "width": 41,
+                "height": 18
+            }
+        },
+        {
+            "id": 5,
+            "definition": {
+                "type": "query_value",
+                "requests": [
+                    {
+                        "q": "100-avg:cockroachdb.capacity.used{$scope}/avg:cockroachdb.capacity.total{$scope}*100",
+                        "aggregator": "avg",
+                        "conditional_formats": [
+                            {
+                                "comparator": ">",
+                                "value": 90,
+                                "palette": "green_on_white"
+                            },
+                            {
+                                "comparator": ">=",
+                                "value": 80,
+                                "palette": "yellow_on_white"
+                            },
+                            {
+                                "comparator": "<",
+                                "value": 80,
+                                "palette": "red_on_white"
+                            }
+                        ]
+                    }
+                ],
+                "custom_links": [],
+                "title": "Capacity Available (%)",
+                "title_size": "16",
+                "title_align": "left",
+                "autoscale": true,
+                "precision": 2
+            },
+            "layout": {
+                "x": 1,
+                "y": 12,
+                "width": 14,
+                "height": 13
+            }
+        },
+        {
+            "id": 6,
+            "definition": {
+                "type": "timeseries",
+                "requests": [
+                    {
+                        "q": "(diff(avg:cockroachdb.sql.service.latency.sum{$scope})/diff(avg:cockroachdb.sql.service.latency.count{$scope}))/1000000",
+                        "display_type": "area",
+                        "style": {
+                            "palette": "dog_classic",
+                            "line_type": "solid",
+                            "line_width": "normal"
+                        }
+                    }
+                ],
+                "custom_links": [],
+                "yaxis": {
+                    "max": "2"
+                },
+                "title": "SQL Service Latency (milliseconds)",
+                "title_size": "16",
+                "title_align": "left",
+                "show_legend": false,
+                "legend_size": "0"
+            },
+            "layout": {
+                "x": 73,
+                "y": 8,
+                "width": 41,
+                "height": 18
+            }
+        },
+        {
+            "id": 7,
+            "definition": {
+                "type": "note",
+                "content": "CPU",
+                "background_color": "gray",
+                "font_size": "14",
+                "text_align": "center",
+                "show_tick": true,
+                "tick_pos": "50%",
+                "tick_edge": "bottom"
+            },
+            "layout": {
+                "x": 31,
+                "y": 2,
+                "width": 41,
+                "height": 5
+            }
+        },
+        {
+            "id": 8,
+            "definition": {
+                "type": "note",
+                "content": "Latency",
+                "background_color": "gray",
+                "font_size": "14",
+                "text_align": "center",
+                "show_tick": true,
+                "tick_pos": "50%",
+                "tick_edge": "bottom"
+            },
+            "layout": {
+                "x": 73,
+                "y": 2,
+                "width": 41,
+                "height": 5
+            }
+        },
+        {
+            "id": 9,
+            "definition": {
+                "type": "query_value",
+                "requests": [
+                    {
+                        "q": "avg:cockroachdb.sql.conns{$scope}",
+                        "aggregator": "avg"
+                    }
+                ],
+                "custom_links": [],
+                "title": "SQL Connections",
+                "title_size": "16",
+                "title_align": "left",
+                "autoscale": true,
+                "precision": 2
+            },
+            "layout": {
+                "x": 16,
+                "y": 39,
+                "width": 14,
+                "height": 13
+            }
+        },
+        {
+            "id": 10,
+            "definition": {
+                "type": "timeseries",
+                "requests": [
+                    {
+                        "q": "(diff(avg:cockroachdb.exec.latency.sum{$scope})/diff(avg:cockroachdb.exec.latency.count{$scope}))/1000000",
+                        "display_type": "line",
+                        "style": {
+                            "palette": "dog_classic",
+                            "line_type": "solid",
+                            "line_width": "normal"
+                        }
+                    }
+                ],
+                "custom_links": [],
+                "yaxis": {
+                    "max": "10"
+                },
+                "title": "Batch Request Latency (milliseconds)",
+                "title_size": "16",
+                "title_align": "left",
+                "show_legend": false,
+                "legend_size": "0"
+            },
+            "layout": {
+                "x": 73,
+                "y": 27,
+                "width": 41,
+                "height": 18
+            }
+        },
+        {
+            "id": 11,
+            "definition": {
+                "type": "note",
+                "content": "Operations\n",
+                "background_color": "gray",
+                "font_size": "14",
+                "text_align": "center",
+                "show_tick": true,
+                "tick_pos": "50%",
+                "tick_edge": "right"
+            },
+            "layout": {
+                "x": 31,
+                "y": 46,
+                "width": 12,
+                "height": 30
+            }
+        },
+        {
+            "id": 12,
+            "definition": {
+                "type": "timeseries",
+                "requests": [
+                    {
+                        "q": "avg:cockroachdb.sql.select.count{$scope}.as_count()",
+                        "display_type": "bars",
+                        "style": {
+                            "palette": "dog_classic",
+                            "line_type": "solid",
+                            "line_width": "normal"
+                        }
+                    }
+                ],
+                "custom_links": [],
+                "title": "SQL SELECT Count",
+                "title_size": "16",
+                "title_align": "left",
+                "show_legend": false,
+                "legend_size": "0"
+            },
+            "layout": {
+                "x": 44,
+                "y": 46,
+                "width": 47,
+                "height": 15
+            }
+        },
+        {
+            "id": 13,
+            "definition": {
+                "type": "timeseries",
+                "requests": [
+                    {
+                        "q": "avg:cockroachdb.sql.delete.count{$scope}.as_count()",
+                        "display_type": "bars",
+                        "style": {
+                            "palette": "dog_classic",
+                            "line_type": "solid",
+                            "line_width": "normal"
+                        }
+                    }
+                ],
+                "custom_links": [],
+                "title": "SQL DELETE Count",
+                "title_size": "16",
+                "title_align": "left",
+                "show_legend": false,
+                "legend_size": "0"
+            },
+            "layout": {
+                "x": 92,
+                "y": 46,
+                "width": 49,
+                "height": 15
+            }
+        },
+        {
+            "id": 14,
+            "definition": {
+                "type": "timeseries",
+                "requests": [
+                    {
+                        "q": "avg:cockroachdb.sql.insert.count{$scope}.as_count()",
+                        "display_type": "bars",
+                        "style": {
+                            "palette": "dog_classic",
+                            "line_type": "solid",
+                            "line_width": "normal"
+                        }
+                    }
+                ],
+                "custom_links": [],
+                "title": "SQL INSERT Count",
+                "title_size": "16",
+                "title_align": "left",
+                "show_legend": false,
+                "legend_size": "0"
+            },
+            "layout": {
+                "x": 44,
+                "y": 62,
+                "width": 47,
+                "height": 14
+            }
+        },
+        {
+            "id": 15,
+            "definition": {
+                "type": "timeseries",
+                "requests": [
+                    {
+                        "q": "avg:cockroachdb.sql.update.count{$scope}.as_count()",
+                        "display_type": "bars",
+                        "style": {
+                            "palette": "dog_classic",
+                            "line_type": "solid",
+                            "line_width": "normal"
+                        }
+                    }
+                ],
+                "custom_links": [],
+                "title": "SQL UPDATE Count",
+                "title_size": "16",
+                "title_align": "left",
+                "show_legend": false,
+                "legend_size": "0"
+            },
+            "layout": {
+                "x": 92,
+                "y": 62,
+                "width": 49,
+                "height": 14
+            }
+        },
+        {
+            "id": 16,
+            "definition": {
+                "type": "note",
+                "content": "Admin Memory",
+                "background_color": "gray",
+                "font_size": "14",
+                "text_align": "center",
+                "show_tick": true,
+                "tick_pos": "50%",
+                "tick_edge": "bottom"
+            },
+            "layout": {
+                "x": 115,
+                "y": 2,
+                "width": 41,
+                "height": 5
+            }
+        },
+        {
+            "id": 17,
+            "definition": {
+                "type": "timeseries",
+                "requests": [
+                    {
+                        "q": "avg:cockroachdb.sql.mem.admin.max.sum{$scope}",
+                        "display_type": "line",
+                        "style": {
+                            "palette": "dog_classic",
+                            "line_type": "solid",
+                            "line_width": "normal"
+                        }
+                    }
+                ],
+                "custom_links": [],
+                "title": "Admin Memory Usage Per SQL Statement",
+                "title_size": "16",
+                "title_align": "left",
+                "show_legend": false,
+                "legend_size": "0"
+            },
+            "layout": {
+                "x": 115,
+                "y": 8,
+                "width": 41,
+                "height": 18
+            }
+        },
+        {
+            "id": 18,
+            "definition": {
+                "type": "timeseries",
+                "requests": [
+                    {
+                        "q": "avg:cockroachdb.sql.mem.admin.session.max.sum{$scope}",
+                        "display_type": "line",
+                        "style": {
+                            "palette": "dog_classic",
+                            "line_type": "solid",
+                            "line_width": "normal"
+                        }
+                    }
+                ],
+                "custom_links": [],
+                "title": "Admin Memory Usage Per SQL Session",
+                "title_size": "16",
+                "title_align": "left",
+                "show_legend": false,
+                "legend_size": "0"
+            },
+            "layout": {
+                "x": 115,
+                "y": 27,
+                "width": 41,
+                "height": 18
+            }
+        },
+        {
+            "id": 19,
+            "definition": {
+                "type": "query_value",
+                "requests": [
+                    {
+                        "q": "avg:cockroachdb.capacity.total{$scope}/1000000000",
+                        "aggregator": "avg"
+                    }
+                ],
+                "custom_links": [],
+                "title": "Total Capacity",
+                "title_size": "16",
+                "title_align": "left",
+                "autoscale": false,
+                "custom_unit": "GB"
+            },
+            "layout": {
+                "x": 16,
+                "y": 12,
+                "width": 14,
+                "height": 13
+            }
+        },
+        {
+            "id": 20,
+            "definition": {
+                "type": "query_value",
+                "requests": [
+                    {
+                        "q": "avg:cockroachdb.capacity.used{$scope}/1000000000",
+                        "aggregator": "avg"
+                    }
+                ],
+                "custom_links": [],
+                "title": "Capacity Used",
+                "title_size": "16",
+                "title_align": "left",
+                "autoscale": false,
+                "custom_unit": "",
+                "precision": 2
+            },
+            "layout": {
+                "x": 16,
+                "y": 26,
+                "width": 14,
+                "height": 12
+            }
+        }
+    ],
+    "template_variables": [
+        {
+            "name": "scope",
+            "default": "*",
+            "prefix": null
+        }
+    ],
+    "layout_type": "free",
+    "is_read_only": true,
+    "notify_list": [],
+    "id": 30282
+}
