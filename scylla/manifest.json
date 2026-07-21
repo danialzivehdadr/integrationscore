@@ -1,0 +1,57 @@
+{
+  "manifest_version": "2.0.0",
+  "app_uuid": "1d655820-3010-4ae3-8273-a3798321d4d4",
+  "app_id": "scylla",
+  "display_on_public_website": true,
+  "tile": {
+    "overview": "README.md#Overview",
+    "configuration": "README.md#Setup",
+    "support": "README.md#Support",
+    "changelog": "CHANGELOG.md",
+    "description": "Track cluster resources, latencies, health, and much more.",
+    "title": "Scylla",
+    "media": [],
+    "classifier_tags": [
+      "Supported OS::Linux",
+      "Supported OS::macOS",
+      "Supported OS::Windows",
+      "Category::Data Store",
+      "Category::Log Collection"
+    ]
+  },
+  "author": {
+    "support_email": "help@datadoghq.com",
+    "name": "Datadog",
+    "homepage": "https://www.datadoghq.com",
+    "sales_email": "info@datadoghq.com"
+  },
+  "oauth": {},
+  "assets": {
+    "integration": {
+      "source_type_name": "Scylla",
+      "configuration": {
+        "spec": "assets/configuration/spec.yaml"
+      },
+      "events": {
+        "creates_events": false
+      },
+      "metrics": {
+        "prefix": "scylla.",
+        "check": "scylla.node.operation_mode",
+        "metadata_path": "metadata.csv"
+      },
+      "service_checks": {
+        "metadata_path": "assets/service_checks.json"
+      }
+    },
+    "dashboards": {
+      "Scylla Overview": "assets/dashboards/overview.json"
+    },
+    "monitors": {
+      "[Scylla] Server is shutting down": "assets/monitors/instance_down.json"
+    },
+    "logs": {
+      "source": "scylla"
+    }
+  }
+}
