@@ -1,0 +1,2 @@
+# integration pip requirements
+pymysql==0.8.0 --hash=sha256:04fa19fad017fdb21394fad2878c1d6bd346959d4fbfd1b66050a09fc636a321
