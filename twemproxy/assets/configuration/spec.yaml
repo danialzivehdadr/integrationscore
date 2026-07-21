@@ -1,0 +1,30 @@
+name: Twemproxy
+fleet_configurable: true
+files:
+- name: twemproxy.yaml
+  options:
+  - template: init_config
+    options:
+    - template: init_config/default
+  - template: instances
+    options:
+    - name: host
+      description: Twemproxy host to connect to.
+      fleet_configurable: true
+      required: True
+      value:
+        example: localhost
+        type: string
+    - name: port
+      description: Twemproxy port to connect to.
+      fleet_configurable: true
+      required: True
+      value:
+        example: 2222
+        type: integer
+    - template: instances/default
+  - template: logs
+    example:
+      - type: file
+        path: var/log/twemproxy/*.log
+        source: twemproxy
