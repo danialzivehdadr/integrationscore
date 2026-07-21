@@ -1,0 +1,76 @@
+name: Measure Disk Usage
+run-name: "Measure Disk Usage [${{ github.event.workflow_run.head_sha }}]"
+
+on:
+  workflow_run:
+    workflows: ['Resolve Dependencies and Build Wheels']
+    types:
+      - completed
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+
+  measure-disk-usage:
+    runs-on: ubuntu-22.04
+    permissions:
+        contents: read
+        actions: read
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        ref: ${{ github.event.workflow_run.head_sha }}
+        fetch-depth: 0
+
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install ddev
+      run: |
+        pip install -e ./datadog_checks_dev[cli]
+        pip install -e ./ddev
+
+    - name: Configure ddev
+      run: |
+        ddev config override
+          
+    - name: Measure disk usage (Uncompressed)
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      run: |
+        echo "Running for locked uncompressed sizes"
+        # locked sizes json is not created as locked sizes don't rely on the previous commit
+        ddev -v size status --commit "$HEAD_SHA" --to-dd-key ${{ secrets.DD_API_KEY }} --branch "$HEAD_BRANCH"
+        echo "Running for declared uncompressed sizes"
+        ddev -v size status --commit "$HEAD_SHA" --to-dd-key ${{ secrets.DD_API_KEY }} --branch "$HEAD_BRANCH" --format json --declared
+
+    - name: Measure disk usage (Compressed)
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+
+      run: |
+        echo "Running for locked compressed sizes"
+        # locked sizes json is not created as locked sizes don't rely on the previous commit
+        ddev -v size status --commit "$HEAD_SHA" --to-dd-key ${{ secrets.DD_API_KEY }} --branch "$HEAD_BRANCH" --compressed
+        echo "Running for declared compressed sizes"
+        ddev -v size status --commit "$HEAD_SHA" --to-dd-key ${{ secrets.DD_API_KEY }} --branch "$HEAD_BRANCH" --compressed --format json --declared
+
+    - name: Upload JSON uncompressed sizes artifact
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      with:
+        name: status_uncompressed.json
+        path: status_uncompressed.json
+        if-no-files-found: warn
+  
+    - name: Upload JSON compressed sizes artifact
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      with:
+        name: status_compressed.json
+        path: status_compressed.json
+        if-no-files-found: warn        
