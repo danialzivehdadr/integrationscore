@@ -1,0 +1,7 @@
+services:
+  zk:
+    image: "zookeeper:${ZK_VERSION}"
+    ports:
+      - "12181:2181"
+    volumes:
+      - ./zoo.cfg:/conf/zoo.cfg
