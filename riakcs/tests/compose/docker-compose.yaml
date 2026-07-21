@@ -1,0 +1,8 @@
+services:
+  dd-test-riakcs:
+    image: ianbytchek/riak-cs
+    container_name: dd-test-riakcs
+    environment:
+      - RIACK_CS_BUCKET=foo
+    ports:
+      - 8080:8080
