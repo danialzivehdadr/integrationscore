@@ -1,0 +1,414 @@
+{
+    "title": "SQLServer - Metrics",
+    "description": "This dashboard allows you to compare metrics from SQL Server with resource utilization metrics from your system. Further reading on SQL Server monitoring:\n\n- [Datadog's SQL Server integration docs](https://docs.datadoghq.com/integrations/sqlserver/)\n\n- [Key metrics for SQL Server monitoring](https://www.datadoghq.com/blog/sql-server-monitoring/)\n\n- [SQL Server monitoring tools](https://www.datadoghq.com/blog/sql-server-monitoring-tools/)\n\n- [Monitor SQL Server performance with Datadog](https://www.datadoghq.com/blog/sql-server-performance/)\n\n- [Custom SQL Server metrics for detailed monitoring](https://www.datadoghq.com/blog/sql-server-metrics/)\n\nClone this template dashboard to make changes and add your own graph widgets.",
+    "layout_type": "ordered",
+    "template_variables": [
+        {
+            "default": "*",
+            "prefix": null,
+            "name": "scope"
+        }
+    ],
+    "widgets": [
+        {
+            "definition": {
+                "requests": [
+                    {
+                        "response_format": "timeseries",
+                        "queries": [
+                            {
+                                "data_source": "metrics",
+                                "name": "query1",
+                                "query": "sum:sqlserver.stats.connections{$scope}",
+                                "semantic_mode": "combined"
+                            }
+                        ],
+                        "formulas": [
+                            {
+                                "formula": "query1"
+                            }
+                        ]
+                    }
+                ],
+                "type": "timeseries",
+                "title": "SQL Server user connections"
+            }
+        },
+        {
+            "definition": {
+                "requests": [
+                    {
+                        "response_format": "timeseries",
+                        "queries": [
+                            {
+                                "data_source": "metrics",
+                                "name": "query1",
+                                "query": "avg:sqlserver.buffer.cache_hit_ratio{$scope}",
+                                "semantic_mode": "combined"
+                            }
+                        ],
+                        "formulas": [
+                            {
+                                "formula": "query1"
+                            }
+                        ]
+                    }
+                ],
+                "type": "timeseries",
+                "title": "SQL Server buffer cache hit ratio"
+            }
+        },
+        {
+            "definition": {
+                "requests": [
+                    {
+                        "response_format": "timeseries",
+                        "queries": [
+                            {
+                                "data_source": "metrics",
+                                "name": "query1",
+                                "query": "sum:sqlserver.stats.procs_blocked{$scope}",
+                                "semantic_mode": "combined"
+                            }
+                        ],
+                        "formulas": [
+                            {
+                                "formula": "query1"
+                            }
+                        ]
+                    }
+                ],
+                "type": "timeseries",
+                "title": "SQL Server processes blocked"
+            }
+        },
+        {
+            "definition": {
+                "requests": [
+                    {
+                        "response_format": "timeseries",
+                        "queries": [
+                            {
+                                "data_source": "metrics",
+                                "name": "query1",
+                                "query": "sum:sqlserver.access.page_splits{$scope}",
+                                "semantic_mode": "combined"
+                            }
+                        ],
+                        "formulas": [
+                            {
+                                "formula": "query1"
+                            }
+                        ]
+                    }
+                ],
+                "type": "timeseries",
+                "title": "SQL Server page splits (per sec)"
+            }
+        },
+        {
+            "definition": {
+                "requests": [
+                    {
+                        "response_format": "timeseries",
+                        "queries": [
+                            {
+                                "data_source": "metrics",
+                                "name": "query1",
+                                "query": "sum:sqlserver.stats.batch_requests{$scope}",
+                                "semantic_mode": "combined"
+                            }
+                        ],
+                        "formulas": [
+                            {
+                                "formula": "query1"
+                            }
+                        ]
+                    }
+                ],
+                "type": "timeseries",
+                "title": "SQL Server batch requests (per sec)"
+            }
+        },
+        {
+            "definition": {
+                "requests": [
+                    {
+                        "response_format": "timeseries",
+                        "queries": [
+                            {
+                                "data_source": "metrics",
+                                "name": "query1",
+                                "query": "sum:sqlserver.stats.sql_compilations{$scope}",
+                                "semantic_mode": "combined"
+                            }
+                        ],
+                        "formulas": [
+                            {
+                                "formula": "query1"
+                            }
+                        ]
+                    }
+                ],
+                "type": "timeseries",
+                "title": "SQL Server SQL compilations (per sec)"
+            }
+        },
+        {
+            "definition": {
+                "requests": [
+                    {
+                        "response_format": "timeseries",
+                        "queries": [
+                            {
+                                "data_source": "metrics",
+                                "name": "query1",
+                                "query": "sum:sqlserver.buffer.page_life_expectancy{$scope}",
+                                "semantic_mode": "combined"
+                            }
+                        ],
+                        "formulas": [
+                            {
+                                "formula": "query1"
+                            }
+                        ]
+                    }
+                ],
+                "type": "timeseries",
+                "title": "SQL Server buffer page life expectancy"
+            }
+        },
+        {
+            "definition": {
+                "requests": [
+                    {
+                        "response_format": "timeseries",
+                        "queries": [
+                            {
+                                "data_source": "metrics",
+                                "name": "query1",
+                                "query": "sum:sqlserver.stats.lock_waits{$scope}",
+                                "semantic_mode": "combined"
+                            }
+                        ],
+                        "formulas": [
+                            {
+                                "formula": "query1"
+                            }
+                        ]
+                    }
+                ],
+                "type": "timeseries",
+                "title": "SQL Server lock waits (per sec)"
+            }
+        },
+        {
+            "definition": {
+                "requests": [
+                    {
+                        "response_format": "timeseries",
+                        "queries": [
+                            {
+                                "data_source": "metrics",
+                                "name": "query1",
+                                "query": "system.load.1{$scope}"
+                            }
+                        ],
+                        "formulas": [
+                            {
+                                "formula": "query1"
+                            }
+                        ]
+                    },
+                    {
+                        "response_format": "timeseries",
+                        "queries": [
+                            {
+                                "data_source": "metrics",
+                                "name": "query1",
+                                "query": "system.load.5{$scope}"
+                            }
+                        ],
+                        "formulas": [
+                            {
+                                "formula": "query1"
+                            }
+                        ]
+                    },
+                    {
+                        "response_format": "timeseries",
+                        "queries": [
+                            {
+                                "data_source": "metrics",
+                                "name": "query1",
+                                "query": "system.load.15{$scope}"
+                            }
+                        ],
+                        "formulas": [
+                            {
+                                "formula": "query1"
+                            }
+                        ]
+                    }
+                ],
+                "type": "timeseries",
+                "title": "System load"
+            }
+        },
+        {
+            "definition": {
+                "requests": [
+                    {
+                        "response_format": "timeseries",
+                        "queries": [
+                            {
+                                "data_source": "metrics",
+                                "name": "query1",
+                                "query": "system.cpu.idle{$scope}"
+                            },
+                            {
+                                "data_source": "metrics",
+                                "name": "query2",
+                                "query": "system.cpu.system{$scope}"
+                            },
+                            {
+                                "data_source": "metrics",
+                                "name": "query3",
+                                "query": "system.cpu.iowait{$scope}"
+                            },
+                            {
+                                "data_source": "metrics",
+                                "name": "query4",
+                                "query": "system.cpu.user{$scope}"
+                            },
+                            {
+                                "data_source": "metrics",
+                                "name": "query5",
+                                "query": "system.cpu.stolen{$scope}"
+                            },
+                            {
+                                "data_source": "metrics",
+                                "name": "query6",
+                                "query": "system.cpu.guest{$scope}"
+                            }
+                        ],
+                        "formulas": [
+                            {
+                                "formula": "query1"
+                            },
+                            {
+                                "formula": "query2"
+                            },
+                            {
+                                "formula": "query3"
+                            },
+                            {
+                                "formula": "query4"
+                            },
+                            {
+                                "formula": "query5"
+                            },
+                            {
+                                "formula": "query6"
+                            }
+                        ]
+                    }
+                ],
+                "type": "timeseries",
+                "title": "CPU usage (%)"
+            }
+        },
+        {
+            "definition": {
+                "requests": [
+                    {
+                        "response_format": "timeseries",
+                        "queries": [
+                            {
+                                "data_source": "metrics",
+                                "name": "query1",
+                                "query": "max:system.cpu.iowait{$scope}"
+                            }
+                        ],
+                        "formulas": [
+                            {
+                                "formula": "query1"
+                            }
+                        ]
+                    }
+                ],
+                "type": "timeseries",
+                "title": "I/O wait (%)"
+            }
+        },
+        {
+            "definition": {
+                "requests": [
+                    {
+                        "response_format": "timeseries",
+                        "queries": [
+                            {
+                                "data_source": "metrics",
+                                "name": "query1",
+                                "query": "sum:system.mem.usable{$scope}"
+                            },
+                            {
+                                "data_source": "metrics",
+                                "name": "query2",
+                                "query": "sum:system.mem.total{$scope}"
+                            }
+                        ],
+                        "formulas": [
+                            {
+                                "formula": "query1"
+                            },
+                            {
+                                "formula": "query2 - query1"
+                            }
+                        ]
+                    }
+                ],
+                "type": "timeseries",
+                "title": "System memory"
+            }
+        },
+        {
+            "definition": {
+                "requests": [
+                    {
+                        "response_format": "timeseries",
+                        "queries": [
+                            {
+                                "data_source": "metrics",
+                                "name": "query1",
+                                "query": "sum:system.net.bytes_rcvd{$scope}"
+                            }
+                        ],
+                        "formulas": [
+                            {
+                                "formula": "query1"
+                            }
+                        ]
+                    },
+                    {
+                        "response_format": "timeseries",
+                        "queries": [
+                            {
+                                "data_source": "metrics",
+                                "name": "query1",
+                                "query": "sum:system.net.bytes_sent{$scope}"
+                            }
+                        ],
+                        "formulas": [
+                            {
+                                "formula": "query1"
+                            }
+                        ]
+                    }
+                ],
+                "type": "timeseries",
+                "title": "Network traffic (per sec)"
+            }
+        }
+    ]
+}
