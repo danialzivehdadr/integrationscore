@@ -1,0 +1,50 @@
+name: Gunicorn
+files:
+- name: gunicorn.yaml
+  options:
+  - template: init_config
+    options:
+      - name: gunicorn
+        display_priority: 0
+        description: |
+          Command or path to gunicorn (e.g. `/usr/local/bin/gunicorn` or `docker exec container gunicorn`)
+          can be overwritten on an instance
+        value:
+          type: string
+          require_trusted_provider: true
+          example: gunicorn
+      - template: init_config/default
+  - template: instances
+    options:
+    - name: proc_name
+      display_priority: 1
+      required: true
+      description: |
+        The name of the gunicorn process. For the following gunicorn server:
+
+        gunicorn --name <WEB_APP_NAME> <WEB_APP_CONFIG>.ini
+
+        the name is `<WEB_APP_NAME>`
+      value:
+        type: string
+      fleet_configurable: true
+    - name: gunicorn
+      display_priority: 0
+      description: Command or path to gunicorn (e.g. `/usr/local/bin/gunicorn` or `docker exec container gunicorn`)
+      value:
+        type: string
+        require_trusted_provider: true
+        example: gunicorn
+    - template: instances/default
+  - template: logs
+    example:
+    - type: file
+      path: /var/log/gunicorn/access.log
+      source: gunicorn
+    - type: file
+      path: /var/log/gunicorn/error.log
+      source: gunicorn
+      log_processing_rules:
+        - type: multi_line
+          name: log_start_with_date
+          pattern: \[\d{4}-\d{2}-\d{2}
