@@ -1,0 +1,113 @@
+include:
+  - /.gitlab/software_composition_analysis.yaml
+  - /.gitlab/build_agent.yaml
+
+variables:
+  TAGGER_IMAGE: 486234852809.dkr.ecr.us-east-1.amazonaws.com/ci/integrations-core:tagger
+  VALIDATE_AGENT_BUILD: 486234852809.dkr.ecr.us-east-1.amazonaws.com/ci/integrations-core:validate_agent_build
+  NOTIFIER_IMAGE: 486234852809.dkr.ecr.us-east-1.amazonaws.com/slack-notifier:latest
+  TAGGER_EMAIL: packages@datadoghq.com
+  TAGGER_NAME: ci.integrations-core
+  NOTIFICATIONS_SLACK_CHANNEL: agent-integrations
+  AGENT_BUILD_NOTIFICATIONS_SLACK_CHANNEL: agent-integrations-ops
+
+stages:
+  - build
+  - validate
+  - release
+  - notify
+
+cache: &slack-cache
+  key: integrations-core-slack-cache
+  paths:
+    - .slack-cache
+  policy: pull-push
+
+notify-failed-pipeline:
+  stage: notify
+  image: $NOTIFIER_IMAGE
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      when: on_failure
+  cache:
+    <<: *slack-cache
+  script:
+    - export SLACK_CACHE_DIR="${PWD}/.slack-cache"
+    - |
+      MESSAGE="The pipeline encountered an unexpected error in job $CI_JOB_NAME. Please investigate $CI_JOB_URL for errors."
+      postmessage "$NOTIFICATIONS_SLACK_CHANNEL" "$MESSAGE" alert
+  tags: [ "arch:amd64" ]
+
+release-auto:
+  stage: release
+  image: $TAGGER_IMAGE
+  id_tokens:
+    DDOCTOSTS_ID_TOKEN:
+      aud: dd-octo-sts
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_COMMIT_BRANCH =~ /^\d+\.\d+\.x$/
+  script:
+    - ddev --version
+    - ddev config override
+    # Prefix every line with a timestamp
+    - ./.gitlab/tagger/tag-release.sh 2>&1 | ts "[%H:%M:%S %Z]  "
+  tags: [ "arch:amd64" ]
+  needs: []
+
+release-manual:
+  stage: release
+  image: $TAGGER_IMAGE
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    # Integration release tags e.g. any_check-X.Y.Z-rc.N
+    - if: $CI_COMMIT_TAG =~ /.*-\d+\.\d+\.\d+(-(rc|pre|alpha|beta)\.\d+)?$/
+    - if: $CI_COMMIT_BRANCH == 'master'
+      when: manual
+      allow_failure: true
+  script:
+    - |
+      if [[ -z "$CI_COMMIT_TAG" ]]; then
+          ./.gitlab/tagger/build-packages.sh
+      else
+          # Get tagger info
+          tagger=$(git for-each-ref refs/tags/$CI_COMMIT_TAG  --format='%(taggername) %(taggeremail)')
+          # The automatic release builder will trigger this job as a side-effect of
+          # tagging releases. To prevent multiple redundant builds we don't trigger
+          # the pipeline unless the tag was applied manually.
+          if [[ "$tagger" =~ "$TAGGER_NAME <$TAGGER_EMAIL>" ]]; then
+              echo "Skipping, packages have already been built"
+          else
+              ./.gitlab/tagger/build-packages.sh
+          fi
+      fi
+  tags: [ "arch:amd64" ]
+  needs: []
+
+tagger-image-builder:
+  stage: build
+  image: 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker:24.0.4-gbi-focal
+  id_tokens:
+    DDSIGN_ID_TOKEN:
+      aud: image-integrity
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'schedule'
+      when: never
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH == 'master'
+      changes:
+        - .gitlab/tagger/**/*
+        - ddev/**/*
+        - .gitlab-ci.yml
+    # Allow to manually trigger a build if we need to
+    - when: manual
+      allow_failure: true
+  script:
+    - METADATA_FILE=$(mktemp)
+    - docker buildx build --tag $TAGGER_IMAGE -f .gitlab/tagger/Dockerfile . --push --metadata-file ${METADATA_FILE}
+    - ddsign sign $TAGGER_IMAGE --docker-metadata-file ${METADATA_FILE}
+  tags: [ "arch:amd64" ]
