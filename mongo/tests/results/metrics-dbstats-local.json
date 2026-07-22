@@ -1,0 +1,152 @@
+[
+    {
+        "name": "mongodb.stats.avgobjsize",
+        "type": 0,
+        "value": 214.15696166042088,
+        "tags": [
+            "server:mongodb://testUser2:*****@localhost:27017/test",
+            "cluster:db:local",
+            "db:local"
+        ]
+    },
+    {
+        "name": "mongodb.stats.datasize",
+        "type": 0,
+        "value": 1485821.0,
+        "tags": [
+            "server:mongodb://testUser2:*****@localhost:27017/test",
+            "cluster:db:local",
+            "db:local"
+        ]
+    },
+    {
+        "name": "mongodb.stats.indexes",
+        "type": 0,
+        "value": 6.0,
+        "tags": [
+            "server:mongodb://testUser2:*****@localhost:27017/test",
+            "cluster:db:local",
+            "db:local"
+        ]
+    },
+    {
+        "name": "mongodb.stats.indexsize",
+        "type": 0,
+        "value": 98304.0,
+        "tags": [
+            "server:mongodb://testUser2:*****@localhost:27017/test",
+            "cluster:db:local",
+            "db:local"
+        ]
+    },
+    {
+        "name": "mongodb.stats.numextents",
+        "type": 0,
+        "value": 0.0,
+        "tags": [
+            "server:mongodb://testUser2:*****@localhost:27017/test",
+            "cluster:db:local",
+            "db:local"
+        ]
+    },
+    {
+        "name": "mongodb.stats.objects",
+        "type": 0,
+        "value": 6938.0,
+        "tags": [
+            "server:mongodb://testUser2:*****@localhost:27017/test",
+            "cluster:db:local",
+            "db:local"
+        ]
+    },
+    {
+        "name": "mongodb.stats.storagesize",
+        "type": 0,
+        "value": 430080.0,
+        "tags": [
+            "server:mongodb://testUser2:*****@localhost:27017/test",
+            "cluster:db:local",
+            "db:local"
+        ]
+    },
+    {
+        "name": "mongodb.stats.collections",
+        "type": 0,
+        "value": 7.0,
+        "tags": [
+            "server:mongodb://testUser2:*****@localhost:27017/test",
+            "cluster:db:local",
+            "db:local"
+        ]
+    },
+    {
+        "name": "mongodb.stats.totalsize",
+        "type": 0,
+        "value": 35102720.0,
+        "tags": [
+            "server:mongodb://testUser2:*****@localhost:27017/test",
+            "cluster:db:local",
+            "db:local"
+        ]
+    },
+    {
+        "name": "mongodb.stats.freestoragesize",
+        "type": 0,
+        "value": 8097792.0,
+        "tags": [
+            "server:mongodb://testUser2:*****@localhost:27017/test",
+            "cluster:db:local",
+            "db:local"
+        ]
+    },
+    {
+        "name": "mongodb.stats.indexfreestoragesize",
+        "type": 0,
+        "value": 8556544.0,
+        "tags": [
+            "server:mongodb://testUser2:*****@localhost:27017/test",
+            "cluster:db:local",
+            "db:local"
+        ]
+    },
+    {
+        "name": "mongodb.stats.totalfreestoragesize",
+        "type": 0,
+        "value": 16654336.0,
+        "tags": [
+            "server:mongodb://testUser2:*****@localhost:27017/test",
+            "cluster:db:local",
+            "db:local"
+        ]
+    },
+    {
+        "name": "mongodb.stats.fsusedsize",
+        "type": 0,
+        "value": 45568802816.0,
+        "tags": [
+            "server:mongodb://testUser2:*****@localhost:27017/test",
+            "cluster:db:local",
+            "db:local"
+        ]
+    },
+    {
+        "name": "mongodb.stats.fstotalsize",
+        "type": 0,
+        "value": 62725623808.0,
+        "tags": [
+            "server:mongodb://testUser2:*****@localhost:27017/test",
+            "cluster:db:local",
+            "db:local"
+        ]
+    },
+    {
+        "name": "mongodb.stats.views",
+        "type": 0,
+        "value": 1.0,
+        "tags": [
+            "server:mongodb://testUser2:*****@localhost:27017/test",
+            "cluster:db:local",
+            "db:local"
+        ]
+    }
+]
