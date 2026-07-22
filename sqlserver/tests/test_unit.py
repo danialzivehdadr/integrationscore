@@ -1,0 +1,1188 @@
+# (C) Datadog, Inc. 2018-present
+# All rights reserved
+# Licensed under a 3-clause BSD style license (see LICENSE)
+import contextlib
+import copy
+import logging
+import os
+import re
+from collections import namedtuple
+
+import mock
+import pytest
+
+from datadog_checks.dev import EnvVars
+from datadog_checks.sqlserver import SQLServer
+from datadog_checks.sqlserver.connection import split_sqlserver_host_port
+from datadog_checks.sqlserver.const import (
+    ENGINE_EDITION_AZURE_MANAGED_INSTANCE,
+    ENGINE_EDITION_SQL_DATABASE,
+    ENGINE_EDITION_STANDARD,
+    STATIC_INFO_ENGINE_EDITION,
+    STATIC_INFO_FULL_SERVERNAME,
+    STATIC_INFO_INSTANCENAME,
+    STATIC_INFO_MAJOR_VERSION,
+    STATIC_INFO_RDS,
+    STATIC_INFO_SERVERNAME,
+    STATIC_INFO_VERSION,
+)
+from datadog_checks.sqlserver.metrics import SqlFractionMetric
+from datadog_checks.sqlserver.schemas import SQLServerSchemaCollector
+from datadog_checks.sqlserver.sqlserver import SQLConnectionError
+from datadog_checks.sqlserver.utils import (
+    Database,
+    construct_use_statement,
+    extract_sql_comments_and_procedure_name,
+    get_unixodbc_sysconfig,
+    is_non_empty_file,
+    parse_sqlserver_major_version,
+    parse_sqlserver_year,
+    set_default_driver_conf,
+)
+
+from .common import CHECK_NAME, DOCKER_SERVER, assert_metrics
+from .utils import not_windows_ci, windows_ci
+
+try:
+    import pyodbc  # type: ignore
+except ImportError:
+    pyodbc = None
+
+# mark the whole module
+pytestmark = pytest.mark.unit
+
+
+@pytest.mark.parametrize(
+    'db_name, expected',
+    [
+        ('my_database', 'USE [my_database];'),
+        (']rh_bracket]', 'USE []]rh_bracket]]];'),
+        ('[lh_bracket[', 'USE [[lh_bracket[];'),
+        ('[bracketed]', 'USE [[bracketed]]];'),
+    ],
+)
+def test_construct_use_statement(db_name, expected):
+    """
+    Test functionality of constructing USE statement
+    """
+    use_stmt = construct_use_statement(db_name)
+
+    assert use_stmt == expected
+
+
+def create_schema_collector(static_info_cache: dict | None = None) -> SQLServerSchemaCollector:
+    check = mock.Mock()
+    check._config.schema_config = {}
+    check.log = mock.Mock()
+    check.static_info_cache = static_info_cache or {}
+    return SQLServerSchemaCollector(check)
+
+
+def test_schema_collector_records_database_compatibility_levels() -> None:
+    collector = create_schema_collector({})
+    databases = [
+        {
+            "name": "db_130",
+            "id": "1",
+            "collation": "SQL_Latin1_General_CP1_CI_AS",
+            "owner": "dbo",
+            "compatibility_level": "130",
+        },
+        {
+            "name": "db_120",
+            "id": "2",
+            "collation": "SQL_Latin1_General_CP1_CI_AS",
+            "owner": "dbo",
+            "compatibility_level": "120",
+        },
+    ]
+
+    collector._record_database_compatibility_levels(databases)
+
+    assert collector._database_compatibility_levels == {"db_130": 130, "db_120": 120}
+    assert databases == [
+        {
+            "name": "db_130",
+            "id": "1",
+            "collation": "SQL_Latin1_General_CP1_CI_AS",
+            "owner": "dbo",
+            "compatibility_level": "130",
+        },
+        {
+            "name": "db_120",
+            "id": "2",
+            "collation": "SQL_Latin1_General_CP1_CI_AS",
+            "owner": "dbo",
+            "compatibility_level": "120",
+        },
+    ]
+
+
+def test_schema_collector_emits_database_compatibility_levels() -> None:
+    collector = create_schema_collector({})
+    collector._check.get_databases.return_value = ["db_130"]
+    cursor = mock.Mock()
+    collector._check.connection.open_managed_default_connection.return_value = contextlib.nullcontext()
+    collector._check.connection.get_managed_cursor.return_value = contextlib.nullcontext(cursor)
+    databases = [
+        {
+            "name": "db_130",
+            "id": "1",
+            "collation": "SQL_Latin1_General_CP1_CI_AS",
+            "owner": "dbo",
+            "compatibility_level": "130",
+        }
+    ]
+
+    with mock.patch("datadog_checks.sqlserver.schemas.execute_query", return_value=databases):
+        collected_databases = collector._get_databases()
+
+    assert collector._database_compatibility_levels == {"db_130": 130}
+    assert collected_databases == [
+        {
+            "name": "db_130",
+            "id": "1",
+            "collation": "SQL_Latin1_General_CP1_CI_AS",
+            "owner": "dbo",
+            "compatibility_level": "130",
+        }
+    ]
+    assert databases[0]["compatibility_level"] == "130"
+
+
+@pytest.mark.parametrize(
+    'engine_edition, major_version, compatibility_level, expected_legacy',
+    [
+        (ENGINE_EDITION_SQL_DATABASE, 12, 130, False),
+        (ENGINE_EDITION_SQL_DATABASE, 12, 120, True),
+        (ENGINE_EDITION_AZURE_MANAGED_INSTANCE, 12, 130, False),
+        (ENGINE_EDITION_AZURE_MANAGED_INSTANCE, 12, 120, True),
+        (ENGINE_EDITION_STANDARD, 13, 170, True),
+        (ENGINE_EDITION_STANDARD, 14, 130, False),
+        (ENGINE_EDITION_STANDARD, 14, 100, True),
+        (ENGINE_EDITION_STANDARD, 0, 170, True),
+    ],
+)
+def test_schema_collector_legacy_query_detection(
+    engine_edition: int, major_version: int, compatibility_level: int, expected_legacy: bool
+) -> None:
+    collector = create_schema_collector(
+        {
+            STATIC_INFO_ENGINE_EDITION: engine_edition,
+            STATIC_INFO_MAJOR_VERSION: major_version,
+        }
+    )
+    collector._database_compatibility_levels = {"datadog_test": compatibility_level}
+
+    assert collector._should_use_legacy_schema_query("datadog_test") is expected_legacy
+
+
+@pytest.mark.parametrize(
+    'engine_edition, major_version',
+    [
+        (ENGINE_EDITION_SQL_DATABASE, 12),
+        (ENGINE_EDITION_AZURE_MANAGED_INSTANCE, 12),
+        (ENGINE_EDITION_STANDARD, 14),
+    ],
+)
+def test_schema_collector_uses_legacy_query_when_compatibility_level_is_not_recorded(
+    engine_edition: int, major_version: int
+) -> None:
+    collector = create_schema_collector(
+        {
+            STATIC_INFO_ENGINE_EDITION: engine_edition,
+            STATIC_INFO_MAJOR_VERSION: major_version,
+        }
+    )
+
+    assert collector._should_use_legacy_schema_query("datadog_test") is True
+
+
+@pytest.mark.parametrize(
+    'engine_edition, major_version, compatibility_level, expected_legacy',
+    [
+        (ENGINE_EDITION_SQL_DATABASE, 12, 130, False),
+        (ENGINE_EDITION_SQL_DATABASE, 12, 120, True),
+        (ENGINE_EDITION_AZURE_MANAGED_INSTANCE, 12, 130, False),
+        (ENGINE_EDITION_AZURE_MANAGED_INSTANCE, 12, 120, True),
+        (ENGINE_EDITION_STANDARD, 14, 130, False),
+        (ENGINE_EDITION_STANDARD, 14, 120, True),
+    ],
+)
+def test_schema_collector_uses_database_compatibility_level_for_schema_query(
+    engine_edition: int, major_version: int, compatibility_level: int, expected_legacy: bool
+) -> None:
+    collector = create_schema_collector(
+        {
+            STATIC_INFO_ENGINE_EDITION: engine_edition,
+            STATIC_INFO_MAJOR_VERSION: major_version,
+        }
+    )
+    collector._database_compatibility_levels = {"datadog_test": compatibility_level}
+    cursor = mock.Mock()
+    collector._check.connection.open_managed_default_connection.return_value = contextlib.nullcontext()
+    collector._check.connection.get_managed_cursor.return_value = contextlib.nullcontext(cursor)
+
+    with collector._get_cursor("datadog_test"):
+        pass
+
+    tables_query = cursor.execute.call_args_list[1][0][0]
+    assert collector._is_2016_or_earlier is expected_legacy
+    assert ("STRING_AGG" in tables_query) is not expected_legacy
+
+
+def test_get_cursor(instance_docker):
+    """
+    Ensure we don't leak connection info in case of a KeyError when the
+    connection pool is empty or the params for `get_cursor` are invalid.
+    """
+    check = SQLServer(CHECK_NAME, {}, [instance_docker])
+    check.initialize_connection()
+    with pytest.raises(SQLConnectionError):
+        check.connection.get_cursor('foo')
+
+
+def test_missing_db(instance_docker, dd_run_check):
+    instance = copy.copy(instance_docker)
+    instance['ignore_missing_database'] = False
+
+    with mock.patch(
+        'datadog_checks.sqlserver.connection.Connection.open_managed_default_connection',
+        side_effect=SQLConnectionError(Exception("couldnt connect")),
+    ):
+        with pytest.raises(SQLConnectionError):
+            check = SQLServer(CHECK_NAME, {}, [instance])
+            check.initialize_connection()
+            check.make_metric_list_to_collect()
+
+    instance['ignore_missing_database'] = True
+    with mock.patch('datadog_checks.sqlserver.connection.Connection.check_database', return_value=(False, 'db')):
+        check = SQLServer(CHECK_NAME, {}, [instance])
+        # Saturate static information to avoid trying to connect to the database
+        expected_keys = {
+            STATIC_INFO_VERSION,
+            STATIC_INFO_MAJOR_VERSION,
+            STATIC_INFO_ENGINE_EDITION,
+            STATIC_INFO_RDS,
+            STATIC_INFO_SERVERNAME,
+            STATIC_INFO_INSTANCENAME,
+        }
+        for key in expected_keys:
+            check.static_info_cache[key] = 'foo'
+
+        check.initialize_connection()
+        check.make_metric_list_to_collect()
+        dd_run_check(check)
+        assert check.do_check is False
+
+
+@mock.patch('datadog_checks.sqlserver.connection.Connection.open_managed_default_database')
+@mock.patch('datadog_checks.sqlserver.connection.Connection.get_cursor')
+def test_db_exists(get_cursor, mock_connect, instance_docker_defaults, dd_run_check):
+    Row = namedtuple('Row', 'name,collation_name')
+    db_results = [
+        Row('master', 'SQL_Latin1_General_CP1_CI_AS'),
+        Row('tempdb', 'SQL_Latin1_General_CP1_CI_AS'),
+        Row('AdventureWorks2017', 'SQL_Latin1_General_CP1_CI_AS'),
+        Row('CaseSensitive2018', 'SQL_Latin1_General_CP1_CS_AS'),
+        Row('OfflineDB', None),
+    ]
+
+    mock_connect.__enter__ = mock.Mock(return_value='foo')
+
+    mock_results = mock.MagicMock()
+    mock_results.fetchall.return_value = db_results
+    get_cursor.return_value = mock_results
+
+    instance = copy.copy(instance_docker_defaults)
+    # make sure check doesn't try to add metrics
+    instance['stored_procedure'] = 'fake_proc'
+    instance['ignore_missing_database'] = True
+
+    # check base case of lowercase for lowercase and case-insensitive db
+    check = SQLServer(CHECK_NAME, {}, [instance])
+    check.initialize_connection()
+    check.make_metric_list_to_collect()
+    assert check.do_check is True
+    # check all caps for case insensitive db
+    instance['database'] = 'MASTER'
+    check = SQLServer(CHECK_NAME, {}, [instance])
+    check.initialize_connection()
+    check.make_metric_list_to_collect()
+    assert check.do_check is True
+
+    # check mixed case against mixed case but case-insensitive db
+    instance['database'] = 'AdventureWORKS2017'
+    check = SQLServer(CHECK_NAME, {}, [instance])
+    check.initialize_connection()
+    check.make_metric_list_to_collect()
+    assert check.do_check is True
+
+    # check case sensitive but matched db
+    instance['database'] = 'CaseSensitive2018'
+    check = SQLServer(CHECK_NAME, {}, [instance])
+    check.initialize_connection()
+    check.make_metric_list_to_collect()
+    assert check.do_check is True
+
+    # check case sensitive but mismatched db
+    instance['database'] = 'cASEsENSITIVE2018'
+    check = SQLServer(CHECK_NAME, {}, [instance])
+    check.initialize_connection()
+    check.make_metric_list_to_collect()
+    assert check.do_check is False
+
+    # check offline but exists db
+    instance['database'] = 'Offlinedb'
+    check = SQLServer(CHECK_NAME, {}, [instance])
+    check.initialize_connection()
+    check.make_metric_list_to_collect()
+    assert check.do_check is True
+
+
+@mock.patch('datadog_checks.sqlserver.connection.Connection.open_managed_default_database')
+@mock.patch('datadog_checks.sqlserver.connection.Connection.get_cursor')
+def test_azure_cross_database_queries_excluded(get_cursor, mock_connect, instance_docker_defaults, dd_run_check):
+    Row = namedtuple('Row', 'name,collation_name')
+    db_results = [
+        Row('master', 'SQL_Latin1_General_CP1_CI_AS'),
+        Row('tempdb', 'SQL_Latin1_General_CP1_CI_AS'),
+        Row('AdventureWorks2017', 'SQL_Latin1_General_CP1_CI_AS'),
+        Row('CaseSensitive2018', 'SQL_Latin1_General_CP1_CS_AS'),
+        Row('OfflineDB', None),
+    ]
+
+    mock_connect.__enter__ = mock.Mock(return_value='foo')
+
+    mock_results = mock.MagicMock()
+    mock_results.fetchall.return_value = db_results
+    get_cursor.return_value = mock_results
+
+    instance = copy.copy(instance_docker_defaults)
+    instance['stored_procedure'] = 'fake_proc'
+    check = SQLServer(CHECK_NAME, {}, [instance])
+    check.initialize_connection()
+    check.make_metric_list_to_collect()
+    cross_database_metrics = [
+        metric
+        for metric in check.instance_metrics
+        if metric.__class__.TABLE not in ['msdb.dbo.backupset', 'sys.dm_db_file_space_usage']
+    ]
+    assert len(cross_database_metrics) == 0
+
+
+def test_autodiscovery_matches_all_by_default(instance_autodiscovery):
+    fetchall_results, mock_cursor = _mock_database_list()
+    all_dbs = {Database(r.name) for r in fetchall_results}
+    # check base case of default filters
+    check = SQLServer(CHECK_NAME, {}, [instance_autodiscovery])
+    check.autodiscover_databases(mock_cursor)
+    assert check.databases == all_dbs
+
+
+def test_azure_autodiscovery_matches_all_by_default(instance_autodiscovery):
+    fetchall_results, mock_cursor = _mock_database_list_azure()
+    all_dbs = {Database(r.name, r.physical_database_name) for r in fetchall_results}
+
+    # check base case of default filters
+    check = SQLServer(CHECK_NAME, {}, [instance_autodiscovery])
+    check.autodiscover_databases(mock_cursor)
+    assert check.databases == all_dbs
+
+
+def test_autodiscovery_matches_none(instance_autodiscovery):
+    fetchall_results, mock_cursor = _mock_database_list()
+    # check missing additions, but no exclusions
+    mock_cursor.fetchall.return_value = iter(fetchall_results)  # reset the mock results
+    instance_autodiscovery['autodiscovery_include'] = ['missingdb', 'fakedb']
+    check = SQLServer(CHECK_NAME, {}, [instance_autodiscovery])
+    check.autodiscover_databases(mock_cursor)
+    assert check.databases == set()
+
+
+def test_azure_autodiscovery_matches_none(instance_autodiscovery):
+    fetchall_results, mock_cursor = _mock_database_list_azure()
+    # check missing additions, but no exclusions
+    mock_cursor.fetchall.return_value = iter(fetchall_results)  # reset the mock results
+    instance_autodiscovery['autodiscovery_include'] = ['missingdb', 'fakedb']
+    check = SQLServer(CHECK_NAME, {}, [instance_autodiscovery])
+    check.autodiscover_databases(mock_cursor)
+    assert check.databases == set()
+
+
+def test_autodiscovery_matches_some(instance_autodiscovery):
+    fetchall_results, mock_cursor = _mock_database_list()
+    instance_autodiscovery['autodiscovery_include'] = ['master', 'fancy2020db', 'missingdb', 'fakedb']
+    check = SQLServer(CHECK_NAME, {}, [instance_autodiscovery])
+    check.autodiscover_databases(mock_cursor)
+    dbs = [Database(name) for name in ['master', 'Fancy2020db']]
+    assert check.databases == set(dbs)
+
+
+def test_azure_autodiscovery_matches_some(instance_autodiscovery):
+    fetchall_results, mock_cursor = _mock_database_list_azure()
+    instance_autodiscovery['autodiscovery_include'] = ['master', 'fancy2020db', 'missingdb', 'fakedb']
+    check = SQLServer(CHECK_NAME, {}, [instance_autodiscovery])
+    check.autodiscover_databases(mock_cursor)
+    dbs = [Database(name, pys_db) for name, pys_db in {'master': 'master', 'Fancy2020db': '40e688a7e268'}.items()]
+    assert check.databases == set(dbs)
+
+
+def test_autodiscovery_exclude_some(instance_autodiscovery):
+    fetchall_results, mock_cursor = _mock_database_list()
+    instance_autodiscovery['autodiscovery_include'] = ['.*']  # replace default `.*`
+    instance_autodiscovery['autodiscovery_exclude'] = ['.*2020db$', 'm.*']
+    check = SQLServer(CHECK_NAME, {}, [instance_autodiscovery])
+    check.autodiscover_databases(mock_cursor)
+    dbs = [Database(name) for name in ['tempdb', 'AdventureWorks2017', 'CaseSensitive2018']]
+    assert check.databases == set(dbs)
+
+
+def test_azure_autodiscovery_exclude_some(instance_autodiscovery):
+    fetchall_results, mock_cursor = _mock_database_list_azure()
+    instance_autodiscovery['autodiscovery_include'] = ['.*']  # replace default `.*`
+    instance_autodiscovery['autodiscovery_exclude'] = ['.*2020db$', 'm.*']
+    check = SQLServer(CHECK_NAME, {}, [instance_autodiscovery])
+    check.autodiscover_databases(mock_cursor)
+    db_dict = {'tempdb': 'tempdb', 'AdventureWorks2017': 'fce04774', 'CaseSensitive2018': 'jub3j8kh'}
+    dbs = [Database(name, pys_db) for name, pys_db in db_dict.items()]
+    assert check.databases == set(dbs)
+
+
+def test_autodiscovery_exclude_override(instance_autodiscovery):
+    fetchall_results, mock_cursor = _mock_database_list()
+    instance_autodiscovery['autodiscovery_include'] = ['t.*', 'master']  # remove default `.*`
+    instance_autodiscovery['autodiscovery_exclude'] = ['.*2020db$', 'm.*']
+    check = SQLServer(CHECK_NAME, {}, [instance_autodiscovery])
+    check.autodiscover_databases(mock_cursor)
+    assert check.databases == {Database("tempdb")}
+
+
+def test_azure_autodiscovery_exclude_override(instance_autodiscovery):
+    fetchall_results, mock_cursor = _mock_database_list_azure()
+    instance_autodiscovery['autodiscovery_include'] = ['t.*', 'master']  # remove default `.*`
+    instance_autodiscovery['autodiscovery_exclude'] = ['.*2020db$', 'm.*']
+    check = SQLServer(CHECK_NAME, {}, [instance_autodiscovery])
+    check.autodiscover_databases(mock_cursor)
+    assert check.databases == {Database("tempdb", "tempdb")}
+
+
+def test_autodiscovery_resets_database_metrics_on_db_removal(instance_autodiscovery):
+    """When autodiscovery detects databases were removed, _database_metrics must be
+    reset so that query executors are rebuilt without the deleted databases."""
+    fetchall_results, mock_cursor = _mock_database_list()
+    check = SQLServer(CHECK_NAME, {}, [instance_autodiscovery])
+
+    # First autodiscovery run — discovers all databases
+    check.autodiscover_databases(mock_cursor)
+    assert check.databases == {Database(r.name) for r in fetchall_results}
+
+    # Simulate _database_metrics being built (as happens during collect_metrics)
+    check._database_metrics = [mock.MagicMock()]
+    assert check._database_metrics is not None
+
+    # Second autodiscovery run with a database removed — simulate by returning fewer rows
+    Row = namedtuple('Row', 'name')
+    reduced_results = [Row('master'), Row('tempdb'), Row('msdb')]
+    mock_cursor.fetchall.return_value = iter(reduced_results)
+    check._ad_last_check = 0  # force autodiscovery to run again
+
+    changed = check.autodiscover_databases(mock_cursor)
+    assert changed is True
+    assert check.databases == {Database('master'), Database('tempdb'), Database('msdb')}
+    assert check._database_metrics is None
+
+
+def test_autodiscovery_resets_database_metrics_on_db_addition(instance_autodiscovery):
+    """When autodiscovery detects new databases were added, _database_metrics must be
+    reset so that query executors are rebuilt to include the new databases."""
+    Row = namedtuple('Row', 'name')
+    initial_results = [Row('master'), Row('tempdb')]
+    mock_cursor = mock.MagicMock()
+    mock_cursor.fetchall.return_value = iter(initial_results)
+
+    check = SQLServer(CHECK_NAME, {}, [instance_autodiscovery])
+
+    # First autodiscovery run
+    check.autodiscover_databases(mock_cursor)
+    assert check.databases == {Database('master'), Database('tempdb')}
+
+    # Simulate _database_metrics being built
+    check._database_metrics = [mock.MagicMock()]
+
+    # Second autodiscovery run with a database added
+    expanded_results = [Row('master'), Row('tempdb'), Row('newdb')]
+    mock_cursor.fetchall.return_value = iter(expanded_results)
+    check._ad_last_check = 0
+
+    changed = check.autodiscover_databases(mock_cursor)
+    assert changed is True
+    assert check.databases == {Database('master'), Database('tempdb'), Database('newdb')}
+    assert check._database_metrics is None
+
+
+@pytest.mark.parametrize(
+    'base_name',
+    [
+        pytest.param('Buffer cache hit ratio base', id='base_name valid'),
+        pytest.param(None, id='base_name None'),
+    ],
+)
+def test_SqlFractionMetric_base(caplog, base_name):
+    Row = namedtuple('Row', ['counter_name', 'cntr_type', 'cntr_value', 'instance_name', 'object_name'])
+    fetchall_results = [
+        Row('Buffer cache hit ratio', 537003264, 33453, '', 'SQLServer:Buffer Manager'),
+        Row('Buffer cache hit ratio base', 1073939712, 33531, '', 'SQLServer:Buffer Manager'),
+        Row('some random counter', 1073939712, 1111, '', 'SQLServer:Buffer Manager'),
+        Row('some random counter base', 1073939712, 33531, '', 'SQLServer:Buffer Manager'),
+    ]
+    mock_cursor = mock.MagicMock()
+    mock_cursor.fetchall.return_value = fetchall_results
+
+    report_function = mock.MagicMock()
+    metric_obj = SqlFractionMetric(
+        cfg_instance={
+            'name': 'sqlserver.buffer.cache_hit_ratio',
+            'counter_name': 'Buffer cache hit ratio',
+            'instance_name': '',
+            'physical_db_name': None,
+            'tags': ['optional:tag1', 'dd.internal.resource:database_instance:stubbed.hostname'],
+            'hostname': 'stubbed.hostname',
+        },
+        base_name=base_name,
+        report_function=report_function,
+        column=None,
+        logger=mock.MagicMock(),
+    )
+    results_rows, results_cols = SqlFractionMetric.fetch_all_values(
+        mock_cursor, ['Buffer cache hit ratio', base_name], mock.mock.MagicMock()
+    )
+    metric_obj.fetch_metric(results_rows, results_cols)
+    if base_name:
+        report_function.assert_called_with(
+            'sqlserver.buffer.cache_hit_ratio',
+            0.9976737943992127,
+            raw=True,
+            hostname='stubbed.hostname',
+            tags=['optional:tag1', 'dd.internal.resource:database_instance:stubbed.hostname'],
+        )
+    else:
+        report_function.assert_not_called()
+
+
+def test_SqlFractionMetric_group_by_instance(caplog):
+    Row = namedtuple('Row', ['counter_name', 'cntr_type', 'cntr_value', 'instance_name', 'object_name'])
+    fetchall_results = [
+        Row('Buffer cache hit ratio', 537003264, 33453, '', 'SQLServer:Buffer Manager'),
+        Row('Buffer cache hit ratio base', 1073939712, 33531, '', 'SQLServer:Buffer Manager'),
+        Row('Foo counter', 537003264, 1, 'bar', 'SQLServer:Buffer Manager'),
+        Row('Foo counter base', 1073939712, 50, 'bar', 'SQLServer:Buffer Manager'),
+        Row('Foo counter', 537003264, 5, 'zoo', 'SQLServer:Buffer Manager'),
+        Row('Foo counter base', 1073939712, 100, 'zoo', 'SQLServer:Buffer Manager'),
+    ]
+    mock_cursor = mock.MagicMock()
+    mock_cursor.fetchall.return_value = fetchall_results
+
+    report_function = mock.MagicMock()
+    metric_obj = SqlFractionMetric(
+        cfg_instance={
+            'name': 'sqlserver.test.metric',
+            'counter_name': 'Foo counter',
+            'instance_name': 'ALL',
+            'physical_db_name': None,
+            'tags': ['optional:tag1', 'dd.internal.resource:database_instance:stubbed.hostname'],
+            'hostname': 'stubbed.hostname',
+            'tag_by': 'db',
+        },
+        base_name='Foo counter base',
+        report_function=report_function,
+        column=None,
+        logger=mock.MagicMock(),
+    )
+    results_rows, results_cols = SqlFractionMetric.fetch_all_values(
+        mock_cursor, ['Foo counter base', 'Foo counter'], mock.mock.MagicMock()
+    )
+    metric_obj.fetch_metric(results_rows, results_cols)
+    report_function.assert_any_call(
+        'sqlserver.test.metric',
+        0.02,
+        raw=True,
+        hostname='stubbed.hostname',
+        tags=['optional:tag1', 'dd.internal.resource:database_instance:stubbed.hostname', 'db:bar'],
+    )
+    report_function.assert_any_call(
+        'sqlserver.test.metric',
+        0.05,
+        raw=True,
+        hostname='stubbed.hostname',
+        tags=['optional:tag1', 'dd.internal.resource:database_instance:stubbed.hostname', 'db:zoo'],
+    )
+
+
+def _mock_database_list():
+    Row = namedtuple('Row', 'name')
+    fetchall_results = [
+        Row('master'),
+        Row('tempdb'),
+        Row('msdb'),
+        Row('AdventureWorks2017'),
+        Row('CaseSensitive2018'),
+        Row('Fancy2020db'),
+    ]
+    mock_cursor = mock.MagicMock()
+    mock_cursor.fetchall.return_value = iter(fetchall_results)
+    # check excluded overrides included
+    mock_cursor.fetchall.return_value = iter(fetchall_results)
+    return fetchall_results, mock_cursor
+
+
+def _mock_database_list_azure():
+    Row = namedtuple('Row', ['name', 'physical_database_name'])
+    fetchall_results = [
+        Row('master', 'master'),
+        Row('tempdb', 'tempdb'),
+        Row('msdb', 'msdb'),
+        Row('AdventureWorks2017', 'fce04774'),
+        Row('CaseSensitive2018', 'jub3j8kh'),
+        Row('Fancy2020db', '40e688a7e268'),
+    ]
+    mock_cursor = mock.MagicMock()
+    mock_cursor.fetchall.return_value = iter(fetchall_results)
+    # check excluded overrides included
+    mock_cursor.fetchall.return_value = iter(fetchall_results)
+    return fetchall_results, mock_cursor
+
+
+def test_set_default_driver_conf():
+    # Docker Agent with ODBCSYSINI env var
+    # The only case where we set ODBCSYSINI to the the default odbcinst.ini folder
+    with EnvVars({'DOCKER_DD_AGENT': 'true'}, ignore=['ODBCSYSINI']):
+        set_default_driver_conf()
+        assert os.environ['ODBCSYSINI'].endswith(os.path.join('data', 'driver_config'))
+
+    with mock.patch("datadog_checks.base.utils.platform.Platform.is_linux", return_value=True):
+        with EnvVars({}, ignore=['ODBCSYSINI']):
+            set_default_driver_conf()
+            assert 'ODBCSYSINI' in os.environ, "ODBCSYSINI should be set"
+            assert os.environ['ODBCSYSINI'].endswith(os.path.join('data', 'driver_config'))
+
+    # `set_default_driver_conf` have no effect on the cases below
+    with EnvVars({'ODBCSYSINI': 'ABC', 'DOCKER_DD_AGENT': 'true'}):
+        set_default_driver_conf()
+        assert os.environ['ODBCSYSINI'] == 'ABC'
+
+    with mock.patch("datadog_checks.base.utils.platform.Platform.is_linux", return_value=True):
+        with EnvVars({}):
+            set_default_driver_conf()
+            assert 'ODBCSYSINI' in os.environ
+            assert os.environ['ODBCSYSINI'].endswith(os.path.join('tests', 'odbc'))
+
+        with EnvVars({'ODBCSYSINI': 'ABC'}):
+            set_default_driver_conf()
+            assert os.environ['ODBCSYSINI'] == 'ABC'
+
+
+@not_windows_ci
+def test_set_default_driver_conf_linux():
+    odbc_config_dir = os.path.expanduser('~')
+    with mock.patch("datadog_checks.sqlserver.utils.get_unixodbc_sysconfig", return_value=odbc_config_dir):
+        with EnvVars({}, ignore=['ODBCSYSINI']):
+            odbc_inst = os.path.join(odbc_config_dir, "odbcinst.ini")
+            odbc_ini = os.path.join(odbc_config_dir, "odbc.ini")
+            for file in [odbc_inst, odbc_ini]:
+                if os.path.exists(file):
+                    os.remove(file)
+            with open(odbc_ini, "x") as file:
+                file.write("dummy-content")
+            set_default_driver_conf()
+            assert is_non_empty_file(odbc_inst), "odbc_inst should have been created when a non empty odbc.ini exists"
+
+
+@windows_ci
+def test_check_local(aggregator, dd_run_check, init_config, instance_docker):
+    sqlserver_check = SQLServer(CHECK_NAME, init_config, [instance_docker])
+    dd_run_check(sqlserver_check)
+    check_tags = sqlserver_check._config.tags + [
+        "database_hostname:{}".format("stubbed.hostname"),
+        "database_instance:{}".format("stubbed.hostname"),
+        "dd.internal.resource:database_instance:{}".format("stubbed.hostname"),
+        "sqlserver_servername:{}".format(sqlserver_check.static_info_cache[STATIC_INFO_SERVERNAME].lower()),
+    ]
+    expected_tags = check_tags + [
+        'sqlserver_host:{}'.format(sqlserver_check.resolved_hostname),
+        'connection_host:{}'.format(DOCKER_SERVER),
+        'db:master',
+    ]
+    assert_metrics(instance_docker, aggregator, check_tags, expected_tags, hostname=sqlserver_check.resolved_hostname)
+
+
+SQL_SERVER_2012_VERSION_EXAMPLE = """\
+Microsoft SQL Server 2012 (SP3) (KB3072779) - 11.0.6020.0 (X64)
+    Oct 20 2015 15:36:27
+    Copyright (c) Microsoft Corporation
+    Express Edition (64-bit) on Windows NT 6.3 <X64> (Build 17763: ) (Hypervisor)
+"""
+
+SQL_SERVER_2019_VERSION_EXAMPLE = """\
+Microsoft SQL Server 2019 (RTM-CU12) (KB5004524) - 15.0.4153.1 (X64)
+    Jul 19 2021 15:37:34
+    Copyright (C) 2019 Microsoft Corporation
+    Standard Edition (64-bit) on Windows Server 2016 Datacenter 10.0 <X64> (Build 14393: ) (Hypervisor)
+"""
+
+
+@pytest.mark.parametrize(
+    "version,expected_year", [(SQL_SERVER_2012_VERSION_EXAMPLE, 2012), (SQL_SERVER_2019_VERSION_EXAMPLE, 2019)]
+)
+def test_parse_sqlserver_year(version, expected_year):
+    assert parse_sqlserver_year(version) == expected_year
+
+
+@pytest.mark.parametrize(
+    "version,expected_major_version", [(SQL_SERVER_2012_VERSION_EXAMPLE, 11), (SQL_SERVER_2019_VERSION_EXAMPLE, 15)]
+)
+def test_parse_sqlserver_major_version(version, expected_major_version):
+    assert parse_sqlserver_major_version(version) == expected_major_version
+
+
+@pytest.mark.parametrize(
+    "instance_host,split_host,split_port",
+    [
+        ("localhost,1433,some-typo", "localhost", "1433"),
+        ("localhost, 1433,some-typo", "localhost", "1433"),
+        ("localhost,1433", "localhost", "1433"),
+        ("localhost", "localhost", None),
+    ],
+)
+def test_split_sqlserver_host(instance_host, split_host, split_port):
+    s_host, s_port = split_sqlserver_host_port(instance_host)
+    assert (s_host, s_port) == (split_host, split_port)
+
+
+@pytest.mark.parametrize(
+    "query,expected_comments,is_proc,expected_name",
+    [
+        [
+            None,
+            [],
+            False,
+            None,
+        ],
+        [
+            "",
+            [],
+            False,
+            None,
+        ],
+        [
+            "/*",
+            [],
+            False,
+            None,
+        ],
+        [
+            "--",
+            [],
+            False,
+            None,
+        ],
+        [
+            "/*justonecomment*/",
+            ["/*justonecomment*/"],
+            False,
+            None,
+        ],
+        [
+            """\
+            /* a comment */
+            -- Single comment
+            """,
+            ["/* a comment */", "-- Single comment"],
+            False,
+            None,
+        ],
+        [
+            "/*tag=foo*/ SELECT * FROM foo;",
+            ["/*tag=foo*/"],
+            False,
+            None,
+        ],
+        [
+            "/*tag=foo*/ SELECT * FROM /*other=tag,incomment=yes*/ foo;",
+            ["/*tag=foo*/", "/*other=tag,incomment=yes*/"],
+            False,
+            None,
+        ],
+        [
+            "/*tag=foo*/ SELECT * FROM /*other=tag,incomment=yes*/ foo /*lastword=yes*/",
+            ["/*tag=foo*/", "/*other=tag,incomment=yes*/", "/*lastword=yes*/"],
+            False,
+            None,
+        ],
+        [
+            """\
+            -- My Comment
+            CREATE PROCEDURE bobProcedure
+            BEGIN
+                SELECT name FROM bob
+            END;
+            """,
+            ["-- My Comment"],
+            True,
+            "bobProcedure",
+        ],
+        [
+            """\
+            -- My procedure
+            CREATE PROCEDURE bobProcedure
+            BEGIN
+                SELECT name FROM bob
+            END;
+            """,
+            ["-- My procedure"],
+            True,
+            "bobProcedure",
+        ],
+        [
+            """\
+            -- My Comment
+            CREATE PROCEDURE bobProcedure
+            -- In the middle
+            BEGIN
+                SELECT name FROM bob
+            END;
+            """,
+            ["-- My Comment", "-- In the middle"],
+            True,
+            "bobProcedure",
+        ],
+        [
+            """\
+            -- My Comment
+            CREATE PROCEDURE bobProcedure
+            -- this procedure does foo
+            BEGIN
+                SELECT name FROM bob
+            END;
+            """,
+            ["-- My Comment", "-- this procedure does foo"],
+            True,
+            "bobProcedure",
+        ],
+        [
+            """\
+            -- My Comment
+            CREATE PROCEDURE bobProcedure
+            -- In the middle
+            BEGIN
+                SELECT name FROM bob
+            END;
+            -- And at the end
+            """,
+            ["-- My Comment", "-- In the middle", "-- And at the end"],
+            True,
+            "bobProcedure",
+        ],
+        [
+            """\
+            -- My Comment
+            CREATE PROCEDURE bobProcedure
+            -- In the middle
+            /*mixed with mult-line foo*/
+            BEGIN
+                SELECT name FROM bob
+            END;
+            -- And at the end
+            """,
+            ["-- My Comment", "-- In the middle", "/*mixed with mult-line foo*/", "-- And at the end"],
+            True,
+            "bobProcedure",
+        ],
+        [
+            """\
+            -- My procedure
+            CREATE PROCEDURE bobProcedure
+            -- In the middle
+            /*mixed with procedure foo*/
+            BEGIN
+                SELECT name FROM bob
+            END;
+            -- And at the end
+            """,
+            ["-- My procedure", "-- In the middle", "/*mixed with procedure foo*/", "-- And at the end"],
+            True,
+            "bobProcedure",
+        ],
+        [
+            """\
+            /* hello
+            this is a mult-line-comment
+            tag=foo,blah=tag
+            */
+            /*
+            second multi-line
+            comment
+            */
+            CREATE PROCEDURE bobProcedure
+            BEGIN
+                SELECT name FROM bob
+            END;
+            -- And at the end
+            """,
+            [
+                "/* hello this is a mult-line-comment tag=foo,blah=tag */",
+                "/* second multi-line comment */",
+                "-- And at the end",
+            ],
+            True,
+            "bobProcedure",
+        ],
+        [
+            """\
+            /* hello
+            this is a mult-line-comment
+            tag=foo,blah=tag
+            */
+            /*
+            second multi-line
+            for procedure foo
+            */
+            CREATE PROCEDURE bobProcedure
+            BEGIN
+                SELECT name FROM bob
+            END;
+            -- And at the end
+            """,
+            [
+                "/* hello this is a mult-line-comment tag=foo,blah=tag */",
+                "/* second multi-line for procedure foo */",
+                "-- And at the end",
+            ],
+            True,
+            "bobProcedure",
+        ],
+        [
+            """\
+            /* hello
+            this is a mult-line-commet
+            tag=foo,blah=tag
+            */
+            CREATE PROCEDURE bobProcedure
+            -- In the middle
+            /*mixed with mult-line foo*/
+            BEGIN
+                SELECT name FROM bob
+            END;
+            -- And at the end
+            """,
+            [
+                "/* hello this is a mult-line-commet tag=foo,blah=tag */",
+                "-- In the middle",
+                "/*mixed with mult-line foo*/",
+                "-- And at the end",
+            ],
+            True,
+            "bobProcedure",
+        ],
+    ],
+)
+def test_extract_sql_comments_and_procedure_name(query, expected_comments, is_proc, expected_name):
+    comments, p, name = extract_sql_comments_and_procedure_name(query)
+    assert comments == expected_comments
+    assert p == is_proc
+    assert re.match(name, expected_name, re.IGNORECASE) if expected_name else expected_name == name
+
+
+def test_get_unixodbc_sysconfig():
+    etc_dir = os.path.sep
+    for dir in ["opt", "datadog-agent", "embedded", "bin", "python"]:
+        etc_dir = os.path.join(etc_dir, dir)
+    assert get_unixodbc_sysconfig(etc_dir).split(os.path.sep) == [
+        "",
+        "opt",
+        "datadog-agent",
+        "embedded",
+        "etc",
+    ], "incorrect unix odbc config dir"
+
+
+@pytest.mark.parametrize(
+    'template, expected, tags',
+    [
+        ('$resolved_hostname', 'stubbed.hostname', ['env:prod']),
+        ('$env-$resolved_hostname:$port', 'prod-stubbed.hostname:22', ['env:prod', 'port:1']),
+        ('$env-$resolved_hostname', 'prod-stubbed.hostname', ['env:prod']),
+        ('$env-$resolved_hostname', '$env-stubbed.hostname', []),
+        ('$env-$resolved_hostname', 'prod-stubbed.hostname', ['env:prod']),
+        ('$env-$server_name/$instance_name', 'prod-server/instance', ['env:prod']),
+        ('$full_server_name', 'server\\instance', ['env:prod']),
+    ],
+)
+def test_database_identifier(instance_docker, template, expected, tags):
+    """
+    Test functionality of calculating database_identifier
+    """
+    instance_docker['host'] = 'localhost,22'
+    instance_docker['database_identifier'] = {'template': template}
+    instance_docker['tags'] = tags
+    check = SQLServer(CHECK_NAME, {}, [instance_docker])
+    check.static_info_cache[STATIC_INFO_SERVERNAME] = 'server'
+    check.static_info_cache[STATIC_INFO_INSTANCENAME] = 'instance'
+    check.static_info_cache[STATIC_INFO_FULL_SERVERNAME] = 'server\\instance'
+    # Reset for recalculation with static info
+    check._database_identifier = None
+
+    assert check.database_identifier == expected
+
+
+def test_only_custom_queries_validation_warnings(caplog):
+    """Test that appropriate warning logs are emitted when only_custom_queries conflicts with other configurations."""
+    from datadog_checks.sqlserver.config import SQLServerConfig
+
+    caplog.clear()
+    caplog.set_level(logging.WARNING)
+
+    # Use a real logger that will be captured by caplog
+    real_logger = logging.getLogger('test_sqlserver_config')
+
+    # Test case 1: only_custom_queries with DBM enabled
+    instance_with_dbm = {
+        'host': 'localhost',
+        'username': 'test',
+        'password': 'test',
+        'only_custom_queries': True,
+        'dbm': True,
+        'custom_queries': [
+            {
+                'query': "SELECT 1 as test_value",
+                'columns': [{'name': 'test_value', 'type': 'gauge'}],
+                'tags': ['test:dbm_warning'],
+            }
+        ],
+    }
+
+    config = SQLServerConfig({}, instance_with_dbm, real_logger)
+    config._validate_only_custom_queries(instance_with_dbm)
+
+    # Check for DBM warning
+    dbm_warning_found = any("only_custom_queries is enabled with DBM" in record.message for record in caplog.records)
+    assert dbm_warning_found, "Expected warning about only_custom_queries with DBM not found"
+
+    # Test case 2: only_custom_queries with stored procedure
+    caplog.clear()
+    instance_with_proc = {
+        'host': 'localhost',
+        'username': 'test',
+        'password': 'test',
+        'only_custom_queries': True,
+        'stored_procedure': 'pyStoredProc',
+        'custom_queries': [
+            {
+                'query': "SELECT 1 as test_value",
+                'columns': [{'name': 'test_value', 'type': 'gauge'}],
+                'tags': ['test:proc_warning'],
+            }
+        ],
+    }
+
+    config = SQLServerConfig({}, instance_with_proc, real_logger)
+    config._validate_only_custom_queries(instance_with_proc)
+
+    # Check for stored procedure warning
+    proc_warning_found = any("`stored_procedure` is deprecated" in record.message for record in caplog.records)
+    assert proc_warning_found, "Expected warning about only_custom_queries with stored_procedure not found"
+
+    # Test case 3: only_custom_queries with no custom queries defined
+    caplog.clear()
+    instance_no_queries = {
+        'host': 'localhost',
+        'username': 'test',
+        'password': 'test',
+        'only_custom_queries': True,
+        'custom_queries': [],
+    }
+
+    config = SQLServerConfig({}, instance_no_queries, real_logger)
+    config._validate_only_custom_queries(instance_no_queries)
+
+    # Check for no custom queries warning
+    no_queries_warning_found = any(
+        "only_custom_queries is enabled but no custom queries are defined" in record.message
+        for record in caplog.records
+    )
+    assert no_queries_warning_found, "Expected warning about only_custom_queries with no custom queries not found"
+
+    # Test case 4: only_custom_queries with all conflicts (should emit all warnings)
+    caplog.clear()
+    instance_all_conflicts = {
+        'host': 'localhost',
+        'username': 'test',
+        'password': 'test',
+        'only_custom_queries': True,
+        'dbm': True,
+        'stored_procedure': 'pyStoredProc',
+        'custom_queries': [],
+    }
+
+    config = SQLServerConfig({}, instance_all_conflicts, real_logger)
+    config._validate_only_custom_queries(instance_all_conflicts)
+
+    # Check that all three warnings are emitted
+    dbm_warning_found = any("only_custom_queries is enabled with DBM" in record.message for record in caplog.records)
+    proc_warning_found = any("`stored_procedure` is deprecated" in record.message for record in caplog.records)
+    no_queries_warning_found = any(
+        "only_custom_queries is enabled but no custom queries are defined" in record.message
+        for record in caplog.records
+    )
+
+    assert dbm_warning_found, "Expected warning about only_custom_queries with DBM not found in all-conflicts test"
+    assert proc_warning_found, (
+        "Expected warning about only_custom_queries with stored_procedure not found in all-conflicts test"
+    )
+    assert no_queries_warning_found, (
+        "Expected warning about only_custom_queries with no custom queries not found in all-conflicts test"
+    )
+
+    # Test case 5: only_custom_queries with no conflicts (should emit no warnings)
+    caplog.clear()
+    instance_no_conflicts = {
+        'host': 'localhost',
+        'username': 'test',
+        'password': 'test',
+        'only_custom_queries': True,
+        'dbm': False,
+        'custom_queries': [
+            {
+                'query': "SELECT 1 as test_value",
+                'columns': [{'name': 'test_value', 'type': 'gauge'}],
+                'tags': ['test:no_conflicts'],
+            }
+        ],
+    }
+
+    config = SQLServerConfig({}, instance_no_conflicts, real_logger)
+    config._validate_only_custom_queries(instance_no_conflicts)
+
+    # Check that no warnings are emitted
+    warning_count = len([record for record in caplog.records if record.levelno >= logging.WARNING])
+    warning_messages = [record.message for record in caplog.records if record.levelno >= logging.WARNING]
+    assert warning_count == 0, f"Expected no warnings but found {warning_count} warnings: {warning_messages}"
+
+
+@pytest.mark.parametrize(
+    'exclude_hostname, expected_hostname',
+    [
+        (False, 'resolved.hostname'),
+        (True, None),
+    ],
+)
+def test_debug_stats_kwargs_respects_exclude_hostname(exclude_hostname, expected_hostname):
+    instance = {
+        'host': DOCKER_SERVER,
+        'username': 'sa',
+        'password': 'Password12!',
+        'exclude_hostname': exclude_hostname,
+    }
+    with mock.patch('datadog_checks.sqlserver.SQLServer.resolve_db_host', return_value='resolved.hostname'):
+        check = SQLServer(CHECK_NAME, {}, [instance])
+    assert check.debug_stats_kwargs()['hostname'] == expected_hostname
