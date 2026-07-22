@@ -1,0 +1,115 @@
+# azure_active_directory
+
+## Overview
+
+Microsoft Entra ID is a cloud-hosted identity and access management service that enables users to access external resources.
+This integration allows you to forward your [Microsoft Entra ID][1] audit and sign-in logs to Datadog.
+
+## Setup
+
+### Installation
+
+This integration forwards logs to Datadog using either [Azure Automated Log Forwarding][2] (recommended) or [Azure with Event Hubs][3]. Datadog recommends using the automated solution because it requires less configuration and maintenance.
+
+### Configuration
+
+<!-- xxx tabs xxx -->
+<!-- xxx tab "Automated Log Forwarding" xxx -->
+
+1. Set up the log forwarding pipeline from Azure to Datadog by following the [Azure Automated Log Forwarding Setup][2] guide.
+
+2. In Azure portal, select _Microsoft Entra ID > Monitoring > Audit logs_.
+   
+3. Select **Export Data Settings**.
+
+4. In the Diagnostics settings pane, do one of the following:
+
+   - To change existing settings, select **Edit setting**.
+   - To add new settings, select **Add diagnostics setting**. You can have up to three settings.
+
+5. Select the **Archive to a storage account** check box.
+
+6. Select any storage account that begins with `ddlogstorage`. These are all managed by the automated log forwarding infrastructure deployed by the ARM template, and any of them will forward logs successfully.
+
+7. Do one or both of the following. Datadog recommends selecting both.
+
+   - To send audit logs, select the **AuditLogs** check box.
+   - To send sign-in logs, select the **SignInLogs** check box.
+  
+8. Select **Save**.
+<!-- xxz tab xxx -->
+
+<!-- xxx tab "Azure with Event Hubs" xxx -->
+
+1. Set up the log forwarding pipeline from Azure to Datadog using Event Hubs by following the [Send Azure Logs to Datadog from an Event Hub][3] guide.
+
+2. In Azure portal, select _Microsoft Entra ID > Monitoring > Audit logs_.
+   
+3. Select **Export Data Settings**.
+
+4. In the Diagnostics settings pane, do one of the following:
+
+   - To change existing settings, select **Edit setting**.
+   - To add new settings, select **Add diagnostics setting**. You can have up to three settings.
+
+5. Select the **Stream to an event hub** check box.
+
+6. Select the Azure subscription and Event Hubs namespace that you created earlier to route the logs to.
+
+7. Do one or both of the following. Datadog recommends selecting both.
+
+   - To send audit logs, select the **AuditLogs** check box.
+   - To send sign-in logs, select the **SignInLogs** check box.
+  
+8. Select **Save**.
+
+For more details on the setup, see Microsoft's [Azure tutorial][4] on streaming Entra ID logs to an Event Hub.
+
+<!-- xxz tab xxx -->
+<!-- xxz tabs xxx -->
+
+Logs should start coming into Datadog within 15 minutes.
+
+## Data Collected
+
+#### Log collection
+
+This integration allows you to setup log ingestion for Microsoft Entra ID activity logs.
+
+This includes the following:
+
+   - Sign-ins - Provides information about the usage of managed applications and user sign-in activities.
+
+   - Audit logs - Provides traceability through logs for all changes done by various features within Azure AD.  
+
+### Metrics
+
+Microsoft Entra ID does not include any metrics.
+
+### Events
+
+Datadog sends credential expiry events, which grant visibility into credential expirations for Azure app registrations, Key Vault keys, Key Vault secrets, and Key Vault certificates. The Microsoft Entra ID integration must be installed to receive events for Azure app registrations. Receiving events from Azure also requires installation of the [Azure integration][5].
+
+
+- **Expiration events** are sent 60, 30, 15, and 1 day(s) before credential expiration, and once after expiration.
+- **Missing permission events** are sent every 15 days. A missing permission event lists the Key Vaults for which Datadog has not been given permissions. If no changes have been made regarding Key Vault permissions in the previous 15-day cycle, the event notification is not sent again.
+
+You can view these events in [Event Explorer][6].
+
+**Notes**: 
+
+- To collect Azure app registration expiration events, [enable access to the Microsoft Graph API][7].
+- If a certificate and its associated key and secret expire at the exact same time, one expiration event is sent for all resources.
+
+## Troubleshooting
+
+Need help? Contact [Datadog support][8].
+
+[1]: https://learn.microsoft.com/entra/identity/monitoring-health/overview-monitoring-health
+[2]: https://docs.datadoghq.com/logs/guide/azure-automated-log-forwarding/
+[3]: https://docs.datadoghq.com/logs/guide/azure-event-hub-log-forwarding/
+[4]: https://learn.microsoft.com/entra/identity/monitoring-health/howto-stream-logs-to-event-hub
+[5]: https://docs.datadoghq.com/integrations/azure/
+[6]: /event/explorer
+[7]: https://docs.datadoghq.com/integrations/guide/azure-graph-api-permissions/
+[8]: https://docs.datadoghq.com/help
